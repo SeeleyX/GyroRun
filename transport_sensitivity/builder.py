@@ -67,10 +67,6 @@ def execute_scan(
         folder_name = os.path.basename(scan_dir)
         param_file = os.path.join(scan_dir, "parameters")
         nml = load_base_parameters(param_file)
-
-        link_path = os.path.join(scan_dir, "gene_uprim")
-        if not os.path.exists(link_path):
-            os.symlink(gene_executable, link_path)
         
         # 1. Extract n_procs_sim dynamically from generated parameters
         n_procs_sim = int(nml.get('parallelization', {}).get('n_procs_sim', 64))

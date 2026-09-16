@@ -2,7 +2,7 @@
 import os
 import numpy as np
 import pandas as pd
-from parser import load_base_parameters
+from .parser import load_base_parameters
 from pyrokinetics import Pyro
 from pyrokinetics.gk_code.gene import GKInputGENE
 

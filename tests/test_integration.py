@@ -1,7 +1,7 @@
 # tests/test_integration.py
 import os
 import pytest
-from builder import execute_scan
+from gyrorun.builder import execute_scan
 
 @pytest.fixture
 def base_nml_file(tmp_path):

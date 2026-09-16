@@ -1,7 +1,7 @@
 # tests/test_validation.py
 import pytest
 import f90nml
-from builder import validate_parallelization
+from gyrorun.builder import validate_parallelization
 
 VALID_NML = """
 &parallelization

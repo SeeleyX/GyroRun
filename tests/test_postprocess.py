@@ -1,7 +1,7 @@
 # tests/test_postprocess.py
 import pytest
 import numpy as np
-from postprocess import analyze_single_run, collect_scan_data
+from gyrorun.postprocess import analyze_single_run, collect_scan_data
 
 def test_analyze_single_run_matrix_solver(tmp_path):
     # Setup dummy directory

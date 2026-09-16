@@ -3,7 +3,7 @@ import os
 import subprocess
 import pytest
 from unittest.mock import patch
-from slurm import generate_sbatch_script, submit_job
+from gyrorun.slurm import generate_sbatch_script, submit_job
 
 def test_generate_sbatch_from_template(tmp_path):
     template = tmp_path / "slurm_template.sh"
@@ -29,7 +29,7 @@ def test_submit_job_dry_run(tmp_path):
     assert job_id > 0
 
 # The @patch decorator intercepts the subprocess.run call so it doesn't actually try to run sbatch!
-@patch('slurm.subprocess.run')
+@patch('gyrorun.slurm.subprocess.run')
 def test_submit_job_mocked(mock_run, tmp_path):
     # 1. Setup the fake response that sbatch *would* give us
     mock_run.return_value.stdout = "Submitted batch job 123456\n"

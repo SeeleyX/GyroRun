@@ -1,10 +1,13 @@
 import os
 import re
 from pyrokinetics import Pyro, PyroScan
-from parser import load_base_parameters
-from slurm import generate_sbatch_script, submit_job, wait_for_jobs
+from .parser import load_base_parameters
+from .slurm import generate_sbatch_script, submit_job, wait_for_jobs
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# repo root, two levels above src/gyrorun/
+PROJECT_ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+)
 
 
 def create_scan(base_filepath, scan_config, output_dir_base="scans"):

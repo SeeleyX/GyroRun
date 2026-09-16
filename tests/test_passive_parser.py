@@ -1,6 +1,6 @@
 import pytest
 import f90nml
-from postprocess import parse_passive_species
+from gyrorun.postprocess import parse_passive_species
 
 TEST_CASES = [
     # Case 1: Standard unnumbered repeated &species blocks (omn, omt, uprim active)

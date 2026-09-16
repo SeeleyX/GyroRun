@@ -1,0 +1,20 @@
+# requirements.txt
+
+pyyaml>=6.0
+
+# Fortran namelist parsing
+f90nml>=1.4.0
+
+# Matrix inversion and numerical processing
+numpy>=1.24.0
+
+# Data aggregation and CSV exports
+pandas>=2.0.0
+
+# Unit and integration testing
+pytest>=8.0.0
+
+# Pyrokinetics output analysis
+pyrokinetics
+matplotlib>=3.9.4
+

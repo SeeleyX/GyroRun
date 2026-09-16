@@ -1,0 +1,11 @@
+&parameters
+  kymin = 0.3
+/
+
+&geometry
+  magn_geometry = 's-alpha'
+  q0 = 1.5
+  shat = 0.8
+  beta = 0.002
+  betaprime = -0.05
+/

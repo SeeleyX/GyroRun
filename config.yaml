@@ -1,0 +1,23 @@
+paths:
+  gene_executable: /pitagora_scratch/userexternal/wseeley0/transport_sensitvity/gene_uprim
+  base_parameters: templates/parameters_template
+  slurm_template: templates/slurm_template.sh
+  output_dir_base: scans
+
+slurm:
+  partition: boost_fua_prod
+  account: fupb2_qlturb
+  time_limit: "02:00:00"
+  poll_interval: 1
+
+run:
+  dry_run: false
+  name: test_001
+
+scans:
+  - group: geometry
+    param: q0
+    values: [1.35, 1.5, 1.65]
+  - group: geometry
+    param: shat
+    values: [1.62, 1.8, 1.98]

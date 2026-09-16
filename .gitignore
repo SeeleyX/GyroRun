@@ -1,0 +1,5 @@
+SENSEenv/
+__pycache__/
+scans/
+*.csv
+*.log

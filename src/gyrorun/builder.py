@@ -22,23 +22,53 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans"):
             values: [1.35, 1.5, 1.65]
           - parameter: ky
             values: [0.1, 0.3]
+          - flags:
+              - enforce_consistent_beta_prime
 
     Every combination of the values is generated. attr and location register
     where the quantity lives in the pyro object, and are only needed for
-    parameters PyroScan does not already define.
+    parameters PyroScan does not already define. A flags mapping may appear
+    in the scan list; its flags apply only to that scan.
     """
-    parameters = scan_config["scan"]
-
     pyro = Pyro(gk_file=base_filepath)
     scan = PyroScan(
         pyro,
-        {p["parameter"]: p["values"] for p in parameters},
+        {
+            item["parameter"]: item["values"]
+            for item in scan_config["scan"]
+            if "parameter" in item
+        },
         base_directory=output_dir_base,
     )
 
-    for p in parameters:
-        if "attr" in p:
-            scan.add_parameter_key(p["parameter"], p["attr"], p["location"])
+    for item in scan_config["scan"]:
+        if "parameter" in item and "attr" in item:
+            scan.add_parameter_key(item["parameter"], item["attr"], item["location"])
+
+    if any(
+        "enforce_consistent_pvg" in item.get("flags", [])
+        for item in scan_config["scan"]
+    ):
+        if any(item.get("parameter") == "gamma_exb" for item in scan_config["scan"]):
+            scan.add_parameter_func(
+                "gamma_exb",
+                Pyro.enforce_consistent_pvg,
+                {},
+            )
+        # Add a reasonable error message here in a standard practice, (Like logs idk)
+
+    if any(
+        "enforce_consistent_beta_prime" in item.get("flags", [])
+        for item in scan_config["scan"]
+    ):
+        if any(item.get("parameter") == "beta" for item in scan_config["scan"]):
+
+            def enforce_beta_prime(pyro):
+                pyro.enforce_consistent_beta_prime()
+
+            scan.add_parameter_func("beta", enforce_beta_prime, {})
+
+            # Add a reasonable error message here in a standard practice, (Like logs idk)
 
     scan.write()
 

@@ -3,7 +3,7 @@ import pytest
 import numpy as np
 from gyrorun.postprocess import analyze_single_run, collect_scan_data
 
-def test_analyze_single_run_matrix_solver(tmp_path):
+def test_analyze_single_run_matrix_solver(tmp_path, monkeypatch):
     # Setup dummy directory
     scan_dir = tmp_path / "scan_test"
     scan_dir.mkdir()
@@ -28,24 +28,27 @@ def test_analyze_single_run_matrix_solver(tmp_path):
     """
     (scan_dir / "parameters").write_text(param_content)
     
-    # 2. Write omega.dat (ky=0.3, gamma=0.15, omega=0.40)
-    (scan_dir / "omega.dat").write_text("0.30  0.15  0.40\n")
-    
-    # 3. Write nrg.dat with fluxes calculated from:
+    # Fluxes are calculated from:
     # Gamma = D*omn + (D*CT)*omt + (D*Cu)*uprim + (D*Cp)
     # Using D=2.0, CT=0.5 (D*CT=1.0), Cu=-0.2 (D*Cu=-0.4), Cp=0.1 (D*Cp=0.2)
     # Trace 1: 2.0(1) + 1.0(0) - 0.4(0) + 0.2 = 2.2
     # Trace 2: 2.0(0) + 1.0(1) - 0.4(0) + 0.2 = 1.2
     # Trace 3: 2.0(0) + 1.0(0) - 0.4(1) + 0.2 = -0.2
     # Trace 4: 2.0(1) + 1.0(1) - 0.4(1) + 0.2 = 2.8
-    nrg_content = (
-        "1.0 0 0 0 5.0 0.0\n"   # Species 1 (Active ion)
-        "1.0 0 0 0 2.2 0.0\n"   # Species 2 (Trace 1)
-        "1.0 0 0 0 1.2 0.0\n"   # Species 3 (Trace 2)
-        "1.0 0 0 0 -0.2 0.0\n"  # Species 4 (Trace 3)
-        "1.0 0 0 0 2.8 0.0\n"   # Species 5 (Trace 4)
+    monkeypatch.setattr(
+        "gyrorun.postprocess.read_omega",
+        lambda _: {"ky": 0.30, "gamma": 0.15, "omega": 0.40},
     )
-    (scan_dir / "nrg.dat").write_text(nrg_content)
+    monkeypatch.setattr(
+        "gyrorun.postprocess.read_nrg",
+        lambda _, num_species=None: {
+            1: {"gamma_total": 5.0},
+            2: {"gamma_total": 2.2},
+            3: {"gamma_total": 1.2},
+            4: {"gamma_total": -0.2},
+            5: {"gamma_total": 2.8},
+        },
+    )
     
     # Execute single run analysis
     results = analyze_single_run(str(scan_dir))

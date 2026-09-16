@@ -25,3 +25,9 @@ scans:
         attr: local_geometry
         location: [shat]
         values: [1.62, 1.8, 1.98]
+      - parameter: beta
+        attr: numerics
+        location: [beta]
+        values: [1,2,3,4]
+      - flags:
+          - enforce_consistent_beta_prime

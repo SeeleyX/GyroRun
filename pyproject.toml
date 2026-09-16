@@ -1,0 +1,25 @@
+[project]
+name = "gyrorun"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "FelixWattsYork", email = "hmq514@york.ac.uk" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "f90nml>=1.4.0",
+    "matplotlib>=3.9.4",
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+    "pyrokinetics>=0.7.0",
+    "pytest>=8.0.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+gyrorun = "gyrorun:main"
+
+[build-system]
+requires = ["uv_build>=0.12.13,<0.13.0"]
+build-backend = "uv_build"

@@ -6,6 +6,7 @@ from slurm import generate_sbatch_script, submit_job, wait_for_jobs
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+
 def create_scan(base_filepath, scan_config, output_dir_base="scans"):
     """
     Build a scan with PyroScan. scan_config is one entry of config.yaml's
@@ -58,14 +59,12 @@ def execute_scan(
     if gene_executable is None:
         raise ValueError("gene_executable path must be provided")
 
-    scan_dirs = create_scan(
-        base_filepath, scan_config, output_dir_base=output_dir_base
-    )
+    scan_dirs = create_scan(base_filepath, scan_config, output_dir_base=output_dir_base)
     active_jobs = {}
 
     for scan_dir in scan_dirs:
         folder_name = os.path.basename(scan_dir)
-        param_file = os.path.join(scan_dir, "parameters")
+        param_file = os.path.join(scan_dir, "input.gene")
         nml = load_base_parameters(param_file)
 
         link_path = os.path.join(scan_dir, "gene_uprim")

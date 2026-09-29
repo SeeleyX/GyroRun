@@ -52,3 +52,16 @@ scans:
     with pytest.raises(SystemExit, match="non-empty"):
         main([str(cfg)])
     assert "sacct" not in "".join(p.read_text() for p in base.rglob("*.sh"))
+
+
+def test_dry_run_without_output_dir_base_refuses(tmp_path, monkeypatch):
+    monkeypatch.setenv("GYRO_DATA_OUTPUT", str(tmp_path / "real"))
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text(f"""paths: {{base_input: {template_dir / 'input.tglf'}}}
+slurm: {{partition: p, account: a, time_limit: "00:10:00", run_command: x}}
+run: {{dry_run: true, scan_name: proj, case: M1}}
+scans: [{{name: a, scan: [{{parameter: ky, values: [0.1]}}]}}]
+""")
+    with pytest.raises(SystemExit, match="output_dir_base"):
+        main([str(cfg)])
+    assert not (tmp_path / "real").exists()

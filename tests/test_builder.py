@@ -78,8 +78,8 @@ def test_units_give_same_physical_ky_in_every_code(tmp_path):
     scan = {"scan": [{"parameter": "ky", "values": [0.1, 0.3]}, {"units": "tglf"}]}
     for base in list(bases_from_one_pyro(tmp_path)):
         dirs = create_scan(str(base), scan, output_dir_base=str(base.parent / "scan"))
-        # the deck PyroScan wrote: input.GFTM until pyro's default name is fixed (35kz.21)
-        decks = [next(Path(d).glob("input.*")) for d in dirs]
+        deck = {"input.gftm": "input.gftm", "input.cgyro": "input.cgyro", "input.gs2": "input.in"}[base.name]
+        decks = [Path(d) / deck for d in dirs]  # fails on pyro's old input.GFTM
         kys = sorted((p := Pyro(gk_file=f)).numerics.ky.to(p.norms.tglf).m for f in decks)
         assert np.allclose(kys, [0.1, 0.3]), (base.name, kys)
 

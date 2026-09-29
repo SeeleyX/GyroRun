@@ -21,6 +21,11 @@ def main(argv=None):
     }
     run = config["run"]
     override = paths.get("output_dir_base")
+    if run["dry_run"] and not override:
+        raise SystemExit(
+            "run.dry_run: true needs paths.output_dir_base, or it writes into the real "
+            "$GYRO_DATA_OUTPUT tree; use e.g. $SCRATCH/gyrorun_dryrun"
+        )
     input_root = os.environ.get("GYRO_DATA_INPUT")
     code = Pyro(gk_file=paths["base_input"]).gk_code
     if input_root and not os.path.abspath(paths["base_input"]).startswith(

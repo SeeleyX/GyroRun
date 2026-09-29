@@ -1,5 +1,6 @@
 # tests/test_builder.py
 import json
+import re
 import os
 from pathlib import Path
 
@@ -124,3 +125,66 @@ def test_qos_line_only_when_given(tmp_path):
     for script in ["slurm_array.sh", "slurm_save.sh"]:
         assert "#SBATCH --qos=normal" in (tmp_path / "q" / script).read_text()
         assert "--qos" not in (tmp_path / "n" / script).read_text()
+
+
+def gs2_template_tree(tmp_path, n=3):
+    """A small per-case GS2 database: n runs, ky varied."""
+    pyro = Pyro(gk_file=BASE)
+    pyro.convert_gk_code("GS2")
+    root = tmp_path / "db"
+    for i in range(n):
+        pyro.write_gk_file(root / f"case_{i}" / "gs2.in", gk_code="GS2")
+    return root
+
+
+def deck_text(d):
+    return (Path(d) / "input.gftm").read_text()
+
+
+def test_gk_code_and_code_flags_written_to_deck(tmp_path):
+    gs2 = tmp_path / "gs2" / "gs2.in"
+    Pyro(gk_file=BASE).write_gk_file(gs2, gk_code="GS2")
+    scan = {"scan": [{"parameter": "ky", "values": [0.1, 0.3]}, {"units": "tglf"},
+                     {"gk_code": "GFTM"}, {"code_flags": {"WIDTH": 0.6, "FILTER": 0.5}}]}
+    dirs = create_scan(str(gs2), scan, output_dir_base=str(tmp_path / "s"))
+    assert len(dirs) == 2
+    for d in dirs:
+        text = deck_text(d)
+        assert re.search(r"^WIDTH\s*=\s*0\.6", text, re.M)
+        assert re.search(r"^FILTER\s*=\s*0\.5", text, re.M)
+
+
+def test_from_directory_cube_converts_and_sets_flags(tmp_path):
+    root = gs2_template_tree(tmp_path)
+    cube = {"cube": [
+        {"from_directory": {"root": str(root), "pattern": "case_*", "params": ["ky"], "gk_code": "GS2"}},
+        {"gk_code": "GFTM"}, {"code_flags": {"WIDTH": 0.6, "FILTER": 0.5}},
+    ]}
+    dirs = create_scan(None, cube, output_dir_base=str(tmp_path / "out"))
+    assert sorted(Path(d).name for d in dirs) == ["case_0", "case_1", "case_2"]
+    assert not list((root).rglob("input.gftm")), "source database must be untouched"
+    for d in dirs:
+        assert re.search(r"^FILTER\s*=\s*0\.5", deck_text(d), re.M)
+
+
+def test_leaf_follows_converted_code_and_manifest_records_flags(tmp_path):
+    gs2 = tmp_path / "in" / "gs2.in"
+    Pyro(gk_file=BASE).write_gk_file(gs2, gk_code="GS2")
+    config = tmp_path / "c.yaml"
+    config.write_text(f"""
+paths: {{base_input: {gs2}, output_dir_base: {tmp_path / 'o'}}}
+slurm: {{partition: p, account: a, time_limit: "00:10:00", run_command: srun x}}
+run: {{dry_run: true, scan_name: proj, case: M1, gk_code: GFTM}}
+scans:
+  - name: leaf
+    scan:
+      - parameter: ky
+        values: [0.1, 0.3]
+      - units: tglf
+      - code_flags: {{WIDTH: 0.6, FILTER: 0.5}}
+""")
+    main([str(config)])
+    leaf = tmp_path / "o" / "GFTM" / "Runs" / "proj" / "M1" / "leaf"
+    manifest = json.loads((leaf / "manifest.json").read_text())
+    assert manifest["code_flags"] == {"WIDTH": 0.6, "FILTER": 0.5} and manifest["gk_code"] == "GFTM"
+    assert len(list(leaf.glob("*/input.gftm"))) == 2

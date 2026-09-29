@@ -48,6 +48,10 @@ def write_manifest(leaf, config, scan_config, ids, executable=None):
         "config": {**config, "scans": [scan_config]},
         # convention the scan values are written in; None = plain floats
         "units": next((i["units"] for i in scan_config[kind(scan_config)] if "units" in i), None),
+        # code settings applied to every run's deck (pyro.add_flags); {} = none
+        "code_flags": {k: v for i in scan_config[kind(scan_config)] for k, v in i.get("code_flags", {}).items()},
+        "gk_code": next((i["gk_code"] for i in scan_config[kind(scan_config)] if "gk_code" in i),
+                        config["run"].get("gk_code")),
         "executable": exe,
         "submitted": datetime.now(timezone.utc).isoformat(),
         "array_job": ids["array"],

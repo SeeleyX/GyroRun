@@ -13,7 +13,7 @@ PROJECT_ROOT = os.path.dirname(
 )
 
 
-def create_scan(base_filepath, scan_config, output_dir_base="scans"):
+def create_scan(base_filepath, scan_config, output_dir_base="scans", gk_code=None):
     """
     Build a scan with PyroScan, or a cube with PyroHypercube. scan_config is
     one entry of config.yaml's 'scans' list, keyed 'scan' or 'cube':
@@ -47,28 +47,52 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans"):
     run: pyro converts them to the code it writes. Without it the values are
     plain floats and PyroScan attaches the base input's own units, with a
     warning.
+
+    gk_code (or the scan's own 'gk_code' item, which wins) converts the scan
+    to that code before writing: scan.convert_gk_code, so the decks are the
+    new code's default file name. 'code_flags: {KEY: value}' items are set on
+    every run's Pyro (pyro.add_flags) after conversion: code settings, not scan
+    parameters. A cube may instead read an existing per-case database:
+
+        cube:
+          - from_directory:
+              root: $GYRO_DATA_OUTPUT/GS2/Runs/kbm/M1   # env vars expanded
+              pattern: "*"
+              params: [ky, beta]
+              gk_code: GS2                              # code of the source decks
+          - gk_code: GFTM
+          - code_flags: {WIDTH: 0.6, FILTER: 0.5}
+
+    one sample per matching run directory, keeping that run's own values.
     """
     kind = "cube" if "cube" in scan_config else "scan"
     items = scan_config[kind]
     values = {item["parameter"]: item["values"] for item in items if "parameter" in item}
     flags = [flag for item in items for flag in item.get("flags", [])]
 
-    convention = next((item["units"] for item in items if "units" in item), None)
-    pyro = Pyro(gk_file=base_filepath)
-    if kind == "cube":
-        n_samples = next(item["n_samples"] for item in items if "n_samples" in item)
-        seed = next((f["seed"] for f in flags if isinstance(f, dict) and "seed" in f), None)
-        lower, upper = zip(*values.values())
-        # pyro has no sampler of its own; its how-to draws samples by hand too
-        sample = qmc.LatinHypercube(d=len(values), rng=seed).random(n_samples)
-        sample = qmc.scale(sample, lower, upper)
-        values = {name: sample[:, i].tolist() for i, name in enumerate(values)}
-    if convention is not None:
-        values = attach_units(pyro, values, items, convention)
-    if kind == "cube":
-        scan = PyroHypercube(pyro, values, base_directory=output_dir_base)
+    source = next((i["from_directory"] for i in items if "from_directory" in i), None)
+    gk_code = next((i["gk_code"] for i in items if "gk_code" in i), gk_code)
+    code_flags = {k: v for i in items for k, v in i.get("code_flags", {}).items()}
+
+    if source:
+        root = os.path.expandvars(os.path.expanduser(source["root"]))
+        # from_directory sets base_directory to the source; write() redirects it
+        scan = PyroHypercube.from_directory(**{**source, "root": root})
     else:
-        scan = PyroScan(pyro, values, base_directory=output_dir_base)
+        pyro = Pyro(gk_file=base_filepath)
+        if kind == "cube":
+            n_samples = next(item["n_samples"] for item in items if "n_samples" in item)
+            seed = next((f["seed"] for f in flags if isinstance(f, dict) and "seed" in f), None)
+            lower, upper = zip(*values.values())
+            # pyro has no sampler of its own; its how-to draws samples by hand too
+            sample = qmc.LatinHypercube(d=len(values), rng=seed).random(n_samples)
+            sample = qmc.scale(sample, lower, upper)
+            values = {name: sample[:, i].tolist() for i, name in enumerate(values)}
+        convention = next((item["units"] for item in items if "units" in item), None)
+        if convention is not None:
+            values = attach_units(pyro, values, items, convention)
+        cls = PyroHypercube if kind == "cube" else PyroScan
+        scan = cls(pyro, values, base_directory=output_dir_base)
 
     for item in items:
         if "parameter" in item and "attr" in item:
@@ -84,7 +108,12 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans"):
 
         scan.add_parameter_func("beta", enforce_beta_prime, {})
 
-    scan.write()
+    if gk_code:
+        scan.convert_gk_code(gk_code)
+    if code_flags:
+        for pyro in scan.pyro_dict.values():
+            pyro.add_flags(code_flags)
+    scan.write(base_directory=output_dir_base)
 
     return [str(d) for d in scan.run_directories]
 
@@ -129,6 +158,7 @@ def execute_scan(
     array_template=None,
     save_template=None,
     dry_run=True,
+    gk_code=None,
 ):
     """
     Write the scan, then submit one Slurm array job over its run directories
@@ -142,7 +172,9 @@ def execute_scan(
     if save_template is None:
         save_template = os.path.join(PROJECT_ROOT, "templates", "slurm_save.sh")
 
-    run_dirs = create_scan(base_filepath, scan_config, output_dir_base=output_dir_base)
+    run_dirs = create_scan(
+        base_filepath, scan_config, output_dir_base=output_dir_base, gk_code=gk_code
+    )
     scan_dir = os.path.abspath(output_dir_base)
     runs_file = os.path.join(scan_dir, "runs.txt")
     with open(runs_file, "w") as f:

@@ -24,6 +24,7 @@ run:
   dry_run: true
   scan_name: test_001   # project: <CODE>/Runs/<scan_name>/<case>/<leaf>
   case: SPR-045
+  # gk_code: GFTM   # optional: convert decks to this code; leaf <CODE> follows it. A scan can override.
 
 scans:
   - name: q_beta        # leaf directory; may contain '/'
@@ -51,3 +52,8 @@ scans:
       - flags:
           - seed: 0
       - units: tglf
+  # - name: gftm_f05
+  #   cube:
+  #     - from_directory: {root: $GYRO_DATA_OUTPUT/GS2/Runs/db/M1, pattern: "*", params: [ky, beta], gk_code: GS2}
+  #     - gk_code: GFTM
+  #     - code_flags: {WIDTH: 0.6, FILTER: 0.5}

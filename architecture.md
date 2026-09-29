@@ -109,6 +109,22 @@ the `pyrokinetics` convention, and the run-directory names use those converted
 magnitudes: `ky: [0.1]` in `tglf` units is `ky_0.10` because it is 0.1014 per
 `rhoref_pyro`, but larger factors show (√2 between `gs2` and `pyrokinetics`).
 
+### Converting the code, code settings, existing databases
+
+- `run.gk_code: GFTM` (or a per-scan `- gk_code: GFTM` item, which wins) converts
+  the scan with `scan.convert_gk_code` before writing. Decks take the new code's
+  default file name (`input.gftm`), and the leaf's `<CODE>` directory follows the
+  **converted** code, not the base input's. Without it the base input's code is used.
+- `- code_flags: {WIDTH: 0.6, FILTER: 0.5}` runs `pyro.add_flags` on every run's
+  Pyro after conversion. These are code settings, not scan parameters; they are
+  in `manifest.json` as `code_flags` (and `gk_code`). Check the deck text: pyro
+  warns some flags are not persistent.
+- A cube can read an existing per-case database instead of sampling:
+  `- from_directory: {root: $GYRO_DATA_OUTPUT/GS2/Runs/..., pattern: "*", params: [ky], gk_code: GS2}`
+  (`PyroHypercube.from_directory`; env vars in `root` are expanded). One sample per
+  matching run, keeping that run's own values; the source tree is only read, output
+  goes to the leaf. `paths.base_input` is then not needed.
+
 ### Generating a PyroCube
 
 A `cube` entry takes `n_samples`, a `[min, max]` range as each parameter's

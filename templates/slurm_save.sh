@@ -7,5 +7,6 @@
 #SBATCH --time=$save_time_limit
 #SBATCH --partition=$partition
 #SBATCH --account=$account
+$qos_line
 
 $python -m gyrorun.save $scan_dir

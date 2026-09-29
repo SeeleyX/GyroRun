@@ -80,6 +80,35 @@ locate values that pyrokinetics does not provide as built-in parameter keys.
 `enforce_consistent_pvg` (with `gamma_exb`) register the matching pyro
 consistency function for that scan only.
 
+### Units of the scan values
+
+`- units: <convention>` names the pyro normalisation convention the scan's
+values are written in: any of `pyro.norms`' conventions (`pyrokinetics`,
+`cgyro`, `gs2`, `gx`, `stella`, `gene`, `neo`, `gkw`, `imas`, `gftm`, `tglf`
+on `feature/claude/open-prs-combined`). It need not be the code being run: three
+configs for GFTM, CGYRO and GS2 can share one `units: tglf` scan and get the
+same physical `ky` in all three, since pyro converts to whichever code it writes.
+
+Each parameter's unit comes from pyro, not a table: GyroRun reads the
+parameter's current value on the base pyro (via the scan's parameter map) and
+takes its units converted to `pyro.norms.<convention>`, e.g. `ky` →
+`1/rhoref_unit` for `tglf`, `1/rhoref_gs2` for `gs2`. Dimensionless parameters
+(`shat`, `q`, `kappa`, …) stay plain. A cube's `[min, max]` ranges are in the same
+convention, and so is every sample. An unknown convention, or one pyro cannot
+resolve for the base input (missing reference values), fails naming the
+parameter and convention.
+
+**Every scan should state its units.** Without `units` the values are plain
+floats and PyroScan attaches the base input's own units with a warning
+(`Adding units [...]`), so the same YAML means a different physical value per
+code (a GS2 base reads `ky` per `rhoref_gs2`, a GFTM base per `rhoref_unit`).
+
+`manifest.json` records the convention as `units` (`null` when omitted).
+`pyroscan.json` stores `parameter_dict` with units, converted by PyroScan to
+the `pyrokinetics` convention, and the run-directory names use those converted
+magnitudes: `ky: [0.1]` in `tglf` units is `ky_0.10` because it is 0.1014 per
+`rhoref_pyro`, but larger factors show (√2 between `gs2` and `pyrokinetics`).
+
 ### Generating a PyroCube
 
 A `cube` entry takes `n_samples`, a `[min, max]` range as each parameter's
@@ -112,7 +141,8 @@ uv run gyrorun examples/pyrocube.yaml
 
 `slurm` in the config sets `partition`, `account`, `time_limit` and the
 required `run_command`, plus optional `nodes` (1), `ntasks` (1),
-`max_parallel` (50, the `%` limit on the array), `setup` (shell lines run in
+`max_parallel` (50, the `%` limit on the array), `qos` (no `--qos` line when
+omitted; Pitagora's `dcgp_fua_prod` uses `normal`), `setup` (shell lines run in
 the run directory before `run_command`) and `save_time_limit` ("00:30:00").
 Those values fill the `string.Template` `$name` placeholders in `templates/slurm_array.sh`
 and `templates/slurm_save.sh`. `run.dry_run: true` writes inputs and scripts

@@ -11,6 +11,7 @@ slurm:
   time_limit: "02:00:00"
   ntasks: 64
   max_parallel: 50
+  # qos: normal   # optional (Pitagora dcgp_fua_prod uses normal); omitted = no --qos line
   setup:
     - module purge
     - module load intel-oneapi-compilers-classic/2021.10.0
@@ -37,6 +38,7 @@ scans:
         values: [0.01, 0.02]
       - flags:
           - enforce_consistent_beta_prime
+      - units: tglf
   - name: shat_ky_n300
     cube:
       - n_samples: 300
@@ -48,3 +50,4 @@ scans:
         values: [0.5, 3.0]
       - flags:
           - seed: 0
+      - units: tglf

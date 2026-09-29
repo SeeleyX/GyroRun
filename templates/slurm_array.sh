@@ -8,6 +8,7 @@
 #SBATCH --time=$time_limit
 #SBATCH --partition=$partition
 #SBATCH --account=$account
+$qos_line
 
 # task i runs in the directory on line i+1 of runs.txt
 cd "$(sed -n "$((SLURM_ARRAY_TASK_ID+1))p" $runs_file)" || exit 1

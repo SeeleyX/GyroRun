@@ -1,7 +1,9 @@
 import os
 import re
 import sys
+import numpy as np
 from pyrokinetics import Pyro, PyroScan, PyroHypercube
+from pyrokinetics.pyroscan import get_from_dict
 from scipy.stats import qmc
 from .slurm import generate_sbatch_script, submit_job
 
@@ -32,18 +34,26 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans"):
             values: [0.1, 1.0]
           - flags:
               - seed: 0
+          - units: tglf
 
     A scan generates every combination of the values. A cube draws n_samples
     points from a Latin hypercube over the [min, max] range in each
     parameter's values. attr and location register where the quantity lives in
     the pyro object, and are only needed for parameters pyrokinetics does not
     already define. Flags apply only to the scan that declares them.
+
+    units names the pyro normalisation convention the values are written in
+    (pyrokinetics, gs2, cgyro, gene, tglf, gftm, ...), whatever code is being
+    run: pyro converts them to the code it writes. Without it the values are
+    plain floats and PyroScan attaches the base input's own units, with a
+    warning.
     """
     kind = "cube" if "cube" in scan_config else "scan"
     items = scan_config[kind]
     values = {item["parameter"]: item["values"] for item in items if "parameter" in item}
     flags = [flag for item in items for flag in item.get("flags", [])]
 
+    convention = next((item["units"] for item in items if "units" in item), None)
     pyro = Pyro(gk_file=base_filepath)
     if kind == "cube":
         n_samples = next(item["n_samples"] for item in items if "n_samples" in item)
@@ -53,6 +63,9 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans"):
         sample = qmc.LatinHypercube(d=len(values), rng=seed).random(n_samples)
         sample = qmc.scale(sample, lower, upper)
         values = {name: sample[:, i].tolist() for i, name in enumerate(values)}
+    if convention is not None:
+        values = attach_units(pyro, values, items, convention)
+    if kind == "cube":
         scan = PyroHypercube(pyro, values, base_directory=output_dir_base)
     else:
         scan = PyroScan(pyro, values, base_directory=output_dir_base)
@@ -76,6 +89,38 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans"):
     return [str(d) for d in scan.run_directories]
 
 
+def attach_units(pyro, values, items, convention):
+    """
+    Attach to each parameter's values its unit in the named convention, taken
+    from the base pyro: the unit of its current value, converted to
+    pyro.norms.<convention>. Dimensionless parameters stay plain.
+    """
+    try:
+        norm = getattr(pyro.norms, convention)
+    except AttributeError:
+        raise ValueError(f"units: {convention!r} is not a pyro normalisation convention")
+    parameter_map = PyroScan(pyro, {}).parameter_map
+    parameter_map.update(
+        {item["parameter"]: [item["attr"], item["location"]] for item in items if "attr" in item}
+    )
+    out = {}
+    for name, vals in values.items():
+        attr, location = parameter_map[name]
+        current = get_from_dict(getattr(pyro, attr), location[:-1])[location[-1]]
+        if not hasattr(current, "units") or current.dimensionless:
+            out[name] = vals
+            continue
+        try:
+            unit = current.to(norm).units
+        except Exception as e:
+            raise ValueError(
+                f"pyro cannot express {name} ({current.units}) in the {convention} "
+                f"convention for this base input: {e}"
+            ) from e
+        out[name] = np.asarray(vals) * unit
+    return out
+
+
 def execute_scan(
     base_filepath,
     scan_config,
@@ -90,7 +135,7 @@ def execute_scan(
     and a save job that runs after it to write pyroscan.nc. Does not wait.
 
     slurm_config is config.yaml's 'slurm' mapping. run_command is required;
-    nodes, ntasks, max_parallel, setup and save_time_limit are optional.
+    nodes, ntasks, max_parallel, qos, setup and save_time_limit are optional.
     """
     if array_template is None:
         array_template = os.path.join(PROJECT_ROOT, "templates", "slurm_array.sh")
@@ -110,6 +155,7 @@ def execute_scan(
         "max_parallel": 50,
         "save_time_limit": "00:30:00",
         **slurm_config,
+        "qos_line": f"#SBATCH --qos={slurm_config['qos']}" if slurm_config.get("qos") else "",
         "setup": "\n".join(slurm_config.get("setup", [])),
         "last_index": len(run_dirs) - 1,
         "runs_file": runs_file,

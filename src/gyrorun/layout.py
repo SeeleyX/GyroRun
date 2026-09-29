@@ -29,6 +29,10 @@ def compose_leaf(code, run, leaf, root=None):
     return path
 
 
+def kind(scan_config):
+    return "cube" if "cube" in scan_config else "scan"
+
+
 def write_manifest(leaf, config, scan_config, ids, executable=None):
     """Provenance for the run catalogue: what was built, by what, submitted when."""
     sha = subprocess.run(
@@ -42,6 +46,8 @@ def write_manifest(leaf, config, scan_config, ids, executable=None):
     manifest = {
         "gyrorun_commit": sha,
         "config": {**config, "scans": [scan_config]},
+        # convention the scan values are written in; None = plain floats
+        "units": next((i["units"] for i in scan_config[kind(scan_config)] if "units" in i), None),
         "executable": exe,
         "submitted": datetime.now(timezone.utc).isoformat(),
         "array_job": ids["array"],

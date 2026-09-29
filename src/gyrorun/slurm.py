@@ -29,7 +29,8 @@ def generate_sbatch_script(template_path, output_path, context):
     with open(template_path, "r") as f:
         template_str = f.read()
 
-    script_content = template_str.format(**context)
+    # $-placeholders, so literal shell ${VAR} and braces survive rendering
+    script_content = Template(template_str).safe_substitute(context)
 
     with open(output_path, "w") as f:
         f.write(script_content)

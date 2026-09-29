@@ -7,7 +7,7 @@ from gyrorun.slurm import generate_sbatch_script, submit_job
 
 def test_generate_sbatch_from_template(tmp_path):
     template = tmp_path / "slurm_template.sh"
-    template.write_text("#!/bin/bash\n#SBATCH -n {ntasks}\ncd {run_dir}\n")
+    template.write_text("#!/bin/bash\n#SBATCH -n $ntasks\ncd $run_dir\nsed -n ${SLURM_ARRAY_TASK_ID}p\n")
 
     out_script = tmp_path / "submit.sh"
     context = {"ntasks": 32, "run_dir": "/tmp/test_dir"}
@@ -16,6 +16,7 @@ def test_generate_sbatch_from_template(tmp_path):
 
     content = out_script.read_text()
     assert "#SBATCH -n 32" in content
+    assert "sed -n ${SLURM_ARRAY_TASK_ID}p" in content
 
 def test_submit_job_dry_run(tmp_path):
     job_id = submit_job("fake_script.sh", str(tmp_path), dry_run=True)

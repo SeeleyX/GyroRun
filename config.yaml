@@ -15,7 +15,8 @@ slurm:
     - module load intel-oneapi-compilers-classic/2021.10.0
     - module load intel-oneapi-mkl/2024.0.0--intel-oneapi-mpi--2021.12.1
     - module load hdf5/1.14.3--intel-oneapi-mpi--2021.12.1--oneapi--2024.1.0
-  run_command: srun --mpi=pmi2 /pitagora_scratch/userexternal/wseeley0/transport_sensitvity/gene_uprim
+  # expanded by bash when the job runs: export GENE_EXE=/path/to/gene before submitting
+  run_command: srun --mpi=pmi2 $GENE_EXE
 
 run:
   dry_run: true

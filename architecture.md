@@ -16,6 +16,7 @@ GyroRun/
 ├── src/gyrorun/
 │   ├── run_scan.py             # `gyrorun config.yaml` entry point
 │   ├── builder.py              # PyroScan/PyroHypercube creation and submission
+│   ├── layout.py               # Run-directory layout and manifest.json
 │   ├── save.py                 # Reload a scan and write pyroscan.nc
 │   ├── slurm.py                # Slurm script rendering and submission
 │   ├── parser.py               # Fortran namelist read/write helpers
@@ -45,8 +46,15 @@ gyrorun.builder.execute_scan
 GyroRun is code-agnostic: pyrokinetics writes every input and reads every
 output, and the code is inferred from `paths.base_input`. The only
 code-specific setting is `slurm.run_command`. Each entry in `scans` is
-written to `<output_dir_base>/<run.name>/scan_<i>` and submitted as one array
-job plus one save job. Nothing polls Slurm; the save job waits on the array
+written to `<root>/<CODE>/Runs/<run.scan_name>/<run.case>/<name>` (the
+Gyrokinetic_Simulations layout; `root` is `$GYRO_DATA_OUTPUT`, or
+`paths.output_dir_base` for dry runs and tests) and submitted as one array
+job plus one save job. `layout.compose_leaf` builds the path from the code pyro
+reads in the base input, checks each segment against `[A-Za-z0-9._-]`, and
+refuses an existing non-empty leaf. `layout.write_manifest` writes
+`manifest.json` in each leaf: GyroRun commit, resolved config, executable
+size/mtime (if `paths.executable`), submission time, array and save job IDs.
+The leaves are printed at the end for the run catalogue. Nothing polls Slurm; the save job waits on the array
 job through its dependency.
 
 ## 3. Core Components

@@ -4,7 +4,8 @@
 paths:
   # base input, any code pyro reads (here pyro's public CGYRO test input)
   base_input: ../tests/data/CGYRO_linear_scan/input.cgyro
-  # scans are written to <output_dir_base>/<run.name>/scan_<i>
+  # Scans go to $GYRO_DATA_OUTPUT/<CODE>/Runs/<scan_name>/<case>/<name>. output_dir_base
+  # replaces $GYRO_DATA_OUTPUT (dry runs, tests); the tail is the same.
   output_dir_base: ../scans
   # slurm_template / save_template default to templates/slurm_array.sh and slurm_save.sh
 
@@ -18,10 +19,12 @@ slurm:
 
 run:
   dry_run: true            # true: write inputs and scripts, submit nothing
-  name: pyrocube_example
+  scan_name: pyrocube_example
+  case: CGYRO_test
 
 scans:
-  - cube:
+  - name: ky_shat_n20
+    cube:
       - n_samples: 20      # number of samples
       - parameter: ky      # a parameter pyro knows, values = [min, max]
         values: [0.1, 1.0]

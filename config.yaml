@@ -2,7 +2,8 @@ paths:
   base_input: templates/parameters_template   # any input pyro reads; code inferred by pyro
   slurm_template: templates/slurm_array.sh
   save_template: templates/slurm_save.sh
-  output_dir_base: scans                      # env vars expanded, e.g. $GYRO_DATA_OUTPUT/GENE/Runs
+  # output_dir_base: scans                  # override for dry runs/tests only; default $GYRO_DATA_OUTPUT
+  # executable: $GENE_EXE                  # optional; its size and mtime go in manifest.json
 
 slurm:
   partition: boost_fua_prod
@@ -20,10 +21,12 @@ slurm:
 
 run:
   dry_run: true
-  name: test_001
+  scan_name: test_001   # project: <CODE>/Runs/<scan_name>/<case>/<leaf>
+  case: SPR-045
 
 scans:
-  - scan:
+  - name: q_beta        # leaf directory; may contain '/'
+    scan:
       - parameter: q0
         attr: local_geometry
         location: [q]
@@ -34,7 +37,8 @@ scans:
         values: [0.01, 0.02]
       - flags:
           - enforce_consistent_beta_prime
-  - cube:
+  - name: shat_ky_n300
+    cube:
       - n_samples: 300
       - parameter: ky
         values: [0.1, 1.0]

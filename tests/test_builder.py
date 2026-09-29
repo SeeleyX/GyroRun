@@ -1,4 +1,5 @@
 # tests/test_builder.py
+import json
 import os
 from pathlib import Path
 
@@ -57,6 +58,7 @@ def test_example_pyrocube_builds(tmp_path):
 
     main([str(config)])
 
-    scan_dir = tmp_path / "scans" / "pyrocube_example" / "scan_0"
+    scan_dir = tmp_path / "scans" / "CGYRO" / "Runs" / "pyrocube_example" / "CGYRO_test" / "ky_shat_n20"
     assert len((scan_dir / "runs.txt").read_text().splitlines()) == 20
     assert (scan_dir / "pyroscan.json").exists()
+    assert json.loads((scan_dir / "manifest.json").read_text())["dry_run"] is True

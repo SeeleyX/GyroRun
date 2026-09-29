@@ -6,13 +6,14 @@ readme = "README.md"
 authors = [
     { name = "FelixWattsYork", email = "hmq514@york.ac.uk" }
 ]
-requires-python = ">=3.14"
+requires-python = ">=3.11"
 dependencies = [
     "f90nml>=1.4.0",
     "matplotlib>=3.9.4",
     "numpy>=1.24.0",
     "pandas>=2.0.0",
-    "pyrokinetics>=0.7.0",
+    "pyrokinetics @ git+https://github.com/pyro-kinetics/pyrokinetics.git@feature/claude/open-prs-combined",
+    "scipy>=1.11",
     "pytest>=8.0.0",
     "pyyaml>=6.0",
 ]

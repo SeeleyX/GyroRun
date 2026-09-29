@@ -1,0 +1,33 @@
+# A minimal PyroCube: 20 Latin-hypercube samples over ky and shat.
+# Run from the GyroRun checkout:  uv run gyrorun examples/pyrocube.yaml
+# Relative paths are relative to this file; $VARS are expanded.
+paths:
+  # base input, any code pyro reads (here pyro's public CGYRO test input)
+  base_input: ../tests/data/CGYRO_linear_scan/input.cgyro
+  # scans are written to <output_dir_base>/<run.name>/scan_<i>
+  output_dir_base: ../scans
+  # slurm_template / save_template default to templates/slurm_array.sh and slurm_save.sh
+
+slurm:
+  partition: boost_fua_prod
+  account: fupb2_qlturb
+  time_limit: "00:30:00"   # per array task
+  ntasks: 1                # per array task; nodes (1), max_parallel (50) also optional
+  setup: []                # shell lines run in the run directory before run_command
+  run_command: echo "replace with e.g. srun /path/to/cgyro"   # required, code-specific
+
+run:
+  dry_run: true            # true: write inputs and scripts, submit nothing
+  name: pyrocube_example
+
+scans:
+  - cube:
+      - n_samples: 20      # number of samples
+      - parameter: ky      # a parameter pyro knows, values = [min, max]
+        values: [0.1, 1.0]
+      - parameter: shat    # attr/location register one pyro does not know
+        attr: local_geometry
+        location: [shat]
+        values: [0.5, 3.0]
+      - flags:
+          - seed: 0        # same seed, same samples

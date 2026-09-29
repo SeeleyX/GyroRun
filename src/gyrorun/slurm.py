@@ -36,15 +36,15 @@ def generate_sbatch_script(template_path, output_path, context):
 
     return output_path
     
-def submit_job(script_path, scan_dir, dry_run=False):
+def submit_job(script_path, scan_dir, dry_run=False, extra_args=()):
     if dry_run:
         fake_id = random.randint(100000, 999999)
-        print(f"[DRY RUN] Would submit: sbatch {script_path} {scan_dir}")
+        print(f"[DRY RUN] Would submit: sbatch {' '.join(extra_args)} {script_path} {scan_dir}")
         return fake_id
 
     try:
         result = subprocess.run(
-            ["sbatch", os.path.basename(script_path), os.path.abspath(scan_dir)],
+            ["sbatch", *extra_args, os.path.basename(script_path), os.path.abspath(scan_dir)],
             cwd=scan_dir,
             capture_output=True,
             text=True,

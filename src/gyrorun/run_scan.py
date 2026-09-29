@@ -1,50 +1,35 @@
 # run_scan.py
 import os
+import sys
 import yaml
 from .builder import execute_scan
-from .slurm import wait_for_jobs
 
-# repo root, two levels above src/gyrorun/
-PROJECT_ROOT = os.path.dirname(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-)
 
-def main():
-    with open(os.path.join(PROJECT_ROOT, "config.yaml")) as f:
+def main(argv=None):
+    """gyrorun config.yaml: build and submit every scan in the config."""
+    config_path = os.path.abspath((argv or sys.argv[1:] or ["config.yaml"])[0])
+    with open(config_path) as f:
         config = yaml.safe_load(f)
 
+    # relative paths are relative to the config file; env vars are expanded
+    config_dir = os.path.dirname(config_path)
     paths = {
-        k: v if os.path.isabs(v) else os.path.join(PROJECT_ROOT, v)
+        k: os.path.join(config_dir, os.path.expanduser(os.path.expandvars(v)))
         for k, v in config["paths"].items()
     }
+    run_dir = os.path.join(paths["output_dir_base"], config["run"]["name"])
 
-    run_name = config["run"]["name"]
-    paths["output_dir_base"] = os.path.join(paths["output_dir_base"], run_name)
-
-    slurm_cfg = config["slurm"]
-    dry_run = config["run"]["dry_run"]
-
-    all_scan_dirs = []
-    for scan_cfg in config["scans"]:
-        active_jobs = execute_scan(
-            base_filepath=paths["base_parameters"],
+    for i, scan_cfg in enumerate(config["scans"]):
+        jobs = execute_scan(
+            base_filepath=paths["base_input"],
             scan_config=scan_cfg,
-            output_dir_base=paths["output_dir_base"],
-            template_path=paths["slurm_template"],
-            gene_executable=paths["gene_executable"],
-            poll_interval=slurm_cfg["poll_interval"],
-            slurm_kwargs={
-                "gene_executable": paths["gene_executable"],
-                "partition": slurm_cfg["partition"],
-                "account": slurm_cfg["account"],
-                "time_limit": slurm_cfg["time_limit"],
-            },
-            dry_run=dry_run,
-            wait=False   
+            slurm_config=config["slurm"],
+            output_dir_base=os.path.join(run_dir, f"scan_{i}"),
+            array_template=paths.get("slurm_template"),
+            save_template=paths.get("save_template"),
+            dry_run=config["run"]["dry_run"],
         )
-        all_scan_dirs.extend(active_jobs.values())
-
-    return all_scan_dirs
+        print(f"scan_{i}: {len(jobs['run_dirs'])} runs, array job {jobs['array']}, save job {jobs['save']}")
 
 
 if __name__ == "__main__":

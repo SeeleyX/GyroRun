@@ -1,17 +1,24 @@
 paths:
-  gene_executable: /pitagora_scratch/userexternal/wseeley0/transport_sensitvity/gene_uprim
-  base_parameters: templates/parameters_template
-  slurm_template: templates/slurm_template.sh
-  output_dir_base: scans
+  base_input: templates/parameters_template   # any input pyro reads; code inferred by pyro
+  slurm_template: templates/slurm_array.sh
+  save_template: templates/slurm_save.sh
+  output_dir_base: scans                      # env vars expanded, e.g. $GYRO_DATA_OUTPUT/GENE/Runs
 
 slurm:
   partition: boost_fua_prod
   account: fupb2_qlturb
   time_limit: "02:00:00"
-  poll_interval: 1
+  ntasks: 64
+  max_parallel: 50
+  setup:
+    - module purge
+    - module load intel-oneapi-compilers-classic/2021.10.0
+    - module load intel-oneapi-mkl/2024.0.0--intel-oneapi-mpi--2021.12.1
+    - module load hdf5/1.14.3--intel-oneapi-mpi--2021.12.1--oneapi--2024.1.0
+  run_command: srun --mpi=pmi2 /pitagora_scratch/userexternal/wseeley0/transport_sensitvity/gene_uprim
 
 run:
-  dry_run: false
+  dry_run: true
   name: test_001
 
 scans:
@@ -20,14 +27,19 @@ scans:
         attr: local_geometry
         location: [q]
         values: [1.35, 1.5, 1.65]
-  - scan:
-      - parameter: shat
-        attr: local_geometry
-        location: [shat]
-        values: [1.62, 1.8, 1.98]
       - parameter: beta
         attr: numerics
         location: [beta]
-        values: [1,2,3,4]
+        values: [0.01, 0.02]
       - flags:
           - enforce_consistent_beta_prime
+  - cube:
+      - n_samples: 300
+      - parameter: ky
+        values: [0.1, 1.0]
+      - parameter: shat
+        attr: local_geometry
+        location: [shat]
+        values: [0.5, 3.0]
+      - flags:
+          - seed: 0

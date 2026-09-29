@@ -1,8 +1,9 @@
 import os
 import re
-from pyrokinetics import Pyro, PyroScan
-from .parser import load_base_parameters
-from .slurm import generate_sbatch_script, submit_job, wait_for_jobs
+import sys
+from pyrokinetics import Pyro, PyroScan, PyroHypercube
+from scipy.stats import qmc
+from .slurm import generate_sbatch_script, submit_job
 
 # repo root, two levels above src/gyrorun/
 PROJECT_ROOT = os.path.dirname(
@@ -12,8 +13,8 @@ PROJECT_ROOT = os.path.dirname(
 
 def create_scan(base_filepath, scan_config, output_dir_base="scans"):
     """
-    Build a scan with PyroScan. scan_config is one entry of config.yaml's
-    'scans' list:
+    Build a scan with PyroScan, or a cube with PyroHypercube. scan_config is
+    one entry of config.yaml's 'scans' list, keyed 'scan' or 'cube':
 
         scan:
           - parameter: q0
@@ -25,50 +26,50 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans"):
           - flags:
               - enforce_consistent_beta_prime
 
-    Every combination of the values is generated. attr and location register
-    where the quantity lives in the pyro object, and are only needed for
-    parameters PyroScan does not already define. A flags mapping may appear
-    in the scan list; its flags apply only to that scan.
-    """
-    pyro = Pyro(gk_file=base_filepath)
-    scan = PyroScan(
-        pyro,
-        {
-            item["parameter"]: item["values"]
-            for item in scan_config["scan"]
-            if "parameter" in item
-        },
-        base_directory=output_dir_base,
-    )
+        cube:
+          - n_samples: 300
+          - parameter: ky
+            values: [0.1, 1.0]
+          - flags:
+              - seed: 0
 
-    for item in scan_config["scan"]:
+    A scan generates every combination of the values. A cube draws n_samples
+    points from a Latin hypercube over the [min, max] range in each
+    parameter's values. attr and location register where the quantity lives in
+    the pyro object, and are only needed for parameters pyrokinetics does not
+    already define. Flags apply only to the scan that declares them.
+    """
+    kind = "cube" if "cube" in scan_config else "scan"
+    items = scan_config[kind]
+    values = {item["parameter"]: item["values"] for item in items if "parameter" in item}
+    flags = [flag for item in items for flag in item.get("flags", [])]
+
+    pyro = Pyro(gk_file=base_filepath)
+    if kind == "cube":
+        n_samples = next(item["n_samples"] for item in items if "n_samples" in item)
+        seed = next((f["seed"] for f in flags if isinstance(f, dict) and "seed" in f), None)
+        lower, upper = zip(*values.values())
+        # pyro has no sampler of its own; its how-to draws samples by hand too
+        sample = qmc.LatinHypercube(d=len(values), rng=seed).random(n_samples)
+        sample = qmc.scale(sample, lower, upper)
+        values = {name: sample[:, i].tolist() for i, name in enumerate(values)}
+        scan = PyroHypercube(pyro, values, base_directory=output_dir_base)
+    else:
+        scan = PyroScan(pyro, values, base_directory=output_dir_base)
+
+    for item in items:
         if "parameter" in item and "attr" in item:
             scan.add_parameter_key(item["parameter"], item["attr"], item["location"])
 
-    if any(
-        "enforce_consistent_pvg" in item.get("flags", [])
-        for item in scan_config["scan"]
-    ):
-        if any(item.get("parameter") == "gamma_exb" for item in scan_config["scan"]):
-            scan.add_parameter_func(
-                "gamma_exb",
-                Pyro.enforce_consistent_pvg,
-                {},
-            )
-        # Add a reasonable error message here in a standard practice, (Like logs idk)
+    if "enforce_consistent_pvg" in flags and "gamma_exb" in values:
+        scan.add_parameter_func("gamma_exb", Pyro.enforce_consistent_pvg, {})
 
-    if any(
-        "enforce_consistent_beta_prime" in item.get("flags", [])
-        for item in scan_config["scan"]
-    ):
-        if any(item.get("parameter") == "beta" for item in scan_config["scan"]):
+    if "enforce_consistent_beta_prime" in flags and "beta" in values:
 
-            def enforce_beta_prime(pyro):
-                pyro.enforce_consistent_beta_prime()
+        def enforce_beta_prime(pyro):
+            pyro.enforce_consistent_beta_prime()
 
-            scan.add_parameter_func("beta", enforce_beta_prime, {})
-
-            # Add a reasonable error message here in a standard practice, (Like logs idk)
+        scan.add_parameter_func("beta", enforce_beta_prime, {})
 
     scan.write()
 
@@ -78,64 +79,62 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans"):
 def execute_scan(
     base_filepath,
     scan_config,
+    slurm_config,
     output_dir_base="scans",
-    template_path=None,
-    gene_executable=None,
-    poll_interval=30,
+    array_template=None,
+    save_template=None,
     dry_run=True,
-    slurm_kwargs=None,
-    wait=False,
 ):
+    """
+    Write the scan, then submit one Slurm array job over its run directories
+    and a save job that runs after it to write pyroscan.nc. Does not wait.
 
-    if template_path is None:
-        template_path = os.path.join(PROJECT_ROOT, "templates", "slurm_template.sh")
-    if gene_executable is None:
-        raise ValueError("gene_executable path must be provided")
+    slurm_config is config.yaml's 'slurm' mapping. run_command is required;
+    nodes, ntasks, max_parallel, setup and save_time_limit are optional.
+    """
+    if array_template is None:
+        array_template = os.path.join(PROJECT_ROOT, "templates", "slurm_array.sh")
+    if save_template is None:
+        save_template = os.path.join(PROJECT_ROOT, "templates", "slurm_save.sh")
 
-    scan_dirs = create_scan(base_filepath, scan_config, output_dir_base=output_dir_base)
-    active_jobs = {}
+    run_dirs = create_scan(base_filepath, scan_config, output_dir_base=output_dir_base)
+    scan_dir = os.path.abspath(output_dir_base)
+    runs_file = os.path.join(scan_dir, "runs.txt")
+    with open(runs_file, "w") as f:
+        f.writelines(os.path.abspath(d) + "\n" for d in run_dirs)
 
-    for scan_dir in scan_dirs:
-        folder_name = os.path.basename(scan_dir)
-        param_file = os.path.join(scan_dir, "input.gene")
-        nml = load_base_parameters(param_file)
+    context = {
+        "job_name": "_".join(scan_dir.split(os.sep)[-2:]),
+        "nodes": 1,
+        "ntasks": 1,
+        "max_parallel": 50,
+        "save_time_limit": "00:30:00",
+        **slurm_config,
+        "setup": "\n".join(slurm_config.get("setup", [])),
+        "last_index": len(run_dirs) - 1,
+        "runs_file": runs_file,
+        "scan_dir": scan_dir,
+        # the save job reads output with the interpreter, and so the pinned
+        # pyrokinetics, that wrote the inputs
+        "python": sys.executable,
+    }
 
-        link_path = os.path.join(scan_dir, "gene_uprim")
-        if not os.path.exists(link_path):
-            os.symlink(gene_executable, link_path)
+    array_script = generate_sbatch_script(
+        array_template, os.path.join(scan_dir, "slurm_array.sh"), context
+    )
+    array_id = submit_job(array_script, scan_dir, dry_run=dry_run)
 
-        # 1. Extract n_procs_sim dynamically from generated parameters
-        n_procs_sim = int(nml.get("parallelization", {}).get("n_procs_sim", 64))
+    save_script = generate_sbatch_script(
+        save_template, os.path.join(scan_dir, "slurm_save.sh"), context
+    )
+    save_id = submit_job(
+        save_script,
+        scan_dir,
+        dry_run=dry_run,
+        extra_args=[f"--dependency=afterany:{array_id}"],
+    )
 
-        # 2. Run parallelization checks BEFORE generating script / submitting
-        validate_parallelization(nml, slurm_ntasks=n_procs_sim)
-
-        # 3. Populate template values
-        output_script = os.path.join(scan_dir, "run_gene.sh")
-        context = {
-            "job_name": folder_name,
-            "ntasks": n_procs_sim,
-            "time_limit": "02:00:00",
-            "partition": "standard",
-            "account": "default_account",
-            "run_dir": os.path.abspath(scan_dir),
-            "gene_executable": gene_executable,
-        }
-        if slurm_kwargs:
-            context.update(slurm_kwargs)
-
-        # 4. Generate submit script from template and submit job
-        script_path = generate_sbatch_script(template_path, output_script, context)
-        job_id = submit_job(script_path, scan_dir, dry_run=dry_run)
-        active_jobs[job_id] = scan_dir
-
-    print(f"\nSuccessfully submitted {len(active_jobs)} jobs.")
-
-    if wait:
-        # Pause execution until all Slurm tasks finish
-        wait_for_jobs(active_jobs, poll_interval=poll_interval, dry_run=dry_run)
-
-    return active_jobs
+    return {"array": array_id, "save": save_id, "run_dirs": run_dirs}
 
 
 def validate_parallelization(nml_dict, slurm_script_path=None, slurm_ntasks=None):

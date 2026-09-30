@@ -119,6 +119,9 @@ magnitudes: `ky: [0.1]` in `tglf` units is `ky_0.10` because it is 0.1014 per
   Pyro after conversion. These are code settings, not scan parameters; they are
   in `manifest.json` as `code_flags` (and `gk_code`). Check the deck text: pyro
   warns some flags are not persistent.
+- `- code_flags_per_sample: <file.json>` maps each run name to its own flags
+  (`{"iteration_0": {"WIDTH": 0.7}}`), applied after `code_flags`; the file must
+  list exactly the scan's runs.
 - A cube can read an existing per-case database instead of sampling:
   `- from_directory: {root: $GYRO_DATA_OUTPUT/GS2/Runs/..., pattern: "*", params: [ky], gk_code: GS2}`
   (`PyroHypercube.from_directory`; env vars in `root` are expanded). One sample per

@@ -206,3 +206,33 @@ def test_value_fmt_sets_run_directory_names(tmp_path):
     scan = {"scan": [{"parameter": "ky", "values": [0.1, 0.3]}, {"units": "tglf"}, {"value_fmt": ".3f"}]}
     dirs = create_scan(BASE, scan, output_dir_base=str(tmp_path / "s"))
     assert all(re.fullmatch(r"ky_0\.\d{3}", Path(d).name) for d in dirs)
+
+
+def test_code_flags_per_sample_sets_each_decks_own_value(tmp_path):
+    root = gs2_template_tree(tmp_path)
+    table = tmp_path / "w.json"
+    table.write_text(json.dumps({f"case_{i}": {"WIDTH": 1.0 + i, "NBASIS_MAX": 59} for i in range(3)}))
+    cube = {"cube": [
+        {"from_directory": {"root": str(root), "pattern": "case_*", "params": ["ky"], "gk_code": "GS2"}},
+        {"gk_code": "GFTM"}, {"code_flags": {"WIDTH": 0.6, "FILTER": 0.5}},
+        {"code_flags_per_sample": str(table)},
+    ]}
+    dirs = create_scan(None, cube, output_dir_base=str(tmp_path / "out"))
+    for d in dirs:
+        i = int(Path(d).name.split("_")[1])
+        text = deck_text(d)
+        assert re.search(rf"^WIDTH\s*=\s*{1.0 + i}\b", text, re.M)
+        assert re.search(r"^NBASIS_MAX\s*=\s*59", text, re.M)
+        assert re.search(r"^FILTER\s*=\s*0\.5", text, re.M)
+
+
+def test_code_flags_per_sample_refuses_a_mismatched_table(tmp_path):
+    root = gs2_template_tree(tmp_path)
+    table = tmp_path / "w.json"
+    table.write_text(json.dumps({"case_0": {"WIDTH": 1.0}}))
+    cube = {"cube": [
+        {"from_directory": {"root": str(root), "pattern": "case_*", "params": ["ky"], "gk_code": "GS2"}},
+        {"gk_code": "GFTM"}, {"code_flags_per_sample": str(table)},
+    ]}
+    with pytest.raises(ValueError, match="without flags"):
+        create_scan(None, cube, output_dir_base=str(tmp_path / "out"))

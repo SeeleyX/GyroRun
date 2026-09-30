@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import sys
@@ -67,8 +68,12 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans", gk_code=Non
               gk_code: GS2                              # code of the source decks
           - gk_code: GFTM
           - code_flags: {WIDTH: 0.6, FILTER: 0.5}
+          - code_flags_per_sample: widths.json      # {"case_0": {"WIDTH": 0.7}, ...}
 
     one sample per matching run directory, keeping that run's own values.
+    code_flags_per_sample names a JSON file mapping each run name to its own
+    flags, applied after code_flags (so they win). It must list exactly the
+    scan's runs: a missing or extra name is an error, never a silent default.
     """
     kind = "cube" if "cube" in scan_config else "scan"
     items = scan_config[kind]
@@ -119,6 +124,17 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans", gk_code=Non
     if code_flags:
         for pyro in scan.pyro_dict.values():
             pyro.add_flags(code_flags)
+    per_sample = next((i["code_flags_per_sample"] for i in items if "code_flags_per_sample" in i), None)
+    if per_sample:
+        with open(os.path.expandvars(os.path.expanduser(per_sample))) as f:
+            table = json.load(f)
+        if set(table) != set(scan.pyro_dict):
+            raise ValueError(
+                f"code_flags_per_sample: runs without flags {sorted(set(scan.pyro_dict) - set(table))[:5]}, "
+                f"flags without a run {sorted(set(table) - set(scan.pyro_dict))[:5]}"
+            )
+        for name, pyro in scan.pyro_dict.items():
+            pyro.add_flags(table[name])
     scan.write(base_directory=output_dir_base)
 
     return [str(d) for d in scan.run_directories]

@@ -56,6 +56,7 @@ def main(argv=None):
             save_template=paths.get("save_template"),
             dry_run=run["dry_run"],
             gk_code=run.get("gk_code"),
+            tearing_parameter=run.get("tearing_parameter", False),
         )
         write_manifest(leaf, config, scan_cfg, {**jobs, "dry_run": run["dry_run"]},
                        paths.get("executable"))

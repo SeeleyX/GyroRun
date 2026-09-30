@@ -9,4 +9,4 @@
 #SBATCH --account=$account
 $qos_line
 
-$python -m gyrorun.save $scan_dir
+$python -m gyrorun.save $scan_dir $save_flags

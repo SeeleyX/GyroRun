@@ -15,3 +15,10 @@ def test_save_writes_netcdf(tmp_path):
     save(scan_dir)
     with xr.open_dataset(scan_dir / "pyroscan.nc") as ds:
         assert np.isfinite(ds["growth_rate"]).all()
+
+
+def test_save_tearing_flag(tmp_path):
+    scan_dir = shutil.copytree(DATA, tmp_path / "scan")
+    # the public CGYRO data has no apar, so only the path is exercised here
+    save(scan_dir, tearing=True)
+    assert (scan_dir / "pyroscan.nc").exists()

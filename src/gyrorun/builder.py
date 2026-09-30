@@ -46,7 +46,9 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans", gk_code=Non
     (pyrokinetics, gs2, cgyro, gene, tglf, gftm, ...), whatever code is being
     run: pyro converts them to the code it writes. Without it the values are
     plain floats and PyroScan attaches the base input's own units, with a
-    warning.
+    warning. A parameter item may carry its own 'units:', overriding the scan's;
+    'units: null' leaves that parameter's values plain, i.e. in the base input's
+    own convention.
 
     gk_code (or the scan's own 'gk_code' item, which wins) converts the scan
     to that code before writing: scan.convert_gk_code, so the decks are the
@@ -88,8 +90,8 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans", gk_code=Non
             sample = qmc.LatinHypercube(d=len(values), rng=seed).random(n_samples)
             sample = qmc.scale(sample, lower, upper)
             values = {name: sample[:, i].tolist() for i, name in enumerate(values)}
-        convention = next((item["units"] for item in items if "units" in item), None)
-        if convention is not None:
+        convention = next((i["units"] for i in items if "units" in i and "parameter" not in i), None)
+        if convention is not None or any("units" in i for i in items):
             values = attach_units(pyro, values, items, convention)
         cls = PyroHypercube if kind == "cube" else PyroScan
         scan = cls(pyro, values, base_directory=output_dir_base)
@@ -124,16 +126,21 @@ def attach_units(pyro, values, items, convention):
     from the base pyro: the unit of its current value, converted to
     pyro.norms.<convention>. Dimensionless parameters stay plain.
     """
-    try:
-        norm = getattr(pyro.norms, convention)
-    except AttributeError:
-        raise ValueError(f"units: {convention!r} is not a pyro normalisation convention")
     parameter_map = PyroScan(pyro, {}).parameter_map
     parameter_map.update(
         {item["parameter"]: [item["attr"], item["location"]] for item in items if "attr" in item}
     )
+    own = {i["parameter"]: i["units"] for i in items if "parameter" in i and "units" in i}
     out = {}
     for name, vals in values.items():
+        units = own.get(name, convention)
+        if units is None:
+            out[name] = vals
+            continue
+        try:
+            norm = getattr(pyro.norms, units)
+        except AttributeError:
+            raise ValueError(f"units: {units!r} is not a pyro normalisation convention")
         attr, location = parameter_map[name]
         current = get_from_dict(getattr(pyro, attr), location[:-1])[location[-1]]
         if not hasattr(current, "units") or current.dimensionless:
@@ -143,7 +150,7 @@ def attach_units(pyro, values, items, convention):
             unit = current.to(norm).units
         except Exception as e:
             raise ValueError(
-                f"pyro cannot express {name} ({current.units}) in the {convention} "
+                f"pyro cannot express {name} ({current.units}) in the {units} "
                 f"convention for this base input: {e}"
             ) from e
         out[name] = np.asarray(vals) * unit

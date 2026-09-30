@@ -188,3 +188,15 @@ scans:
     manifest = json.loads((leaf / "manifest.json").read_text())
     assert manifest["code_flags"] == {"WIDTH": 0.6, "FILTER": 0.5} and manifest["gk_code"] == "GFTM"
     assert len(list(leaf.glob("*/input.gftm"))) == 2
+
+
+def test_parameter_units_override_the_scans(tmp_path):
+    # ky in pyrokinetics units, shat plain (the base input's own): what a scan
+    # whose json records ky as 1/rhoref_pyro and beta in the base's units needs
+    base = [b for b in bases_from_one_pyro(tmp_path) if b.name == "input.gs2"][0]
+    scan = {"scan": [{"units": "tglf"}, {"parameter": "ky", "values": [0.1]},
+                     {"parameter": "shat", "attr": "local_geometry", "location": ["shat"], "units": None, "values": [1.7]}]}
+    (d,) = create_scan(str(base), scan, output_dir_base=str(tmp_path / "s"))
+    p = Pyro(gk_file=Path(d) / "input.in")
+    assert np.isclose(p.numerics.ky.to(p.norms.tglf).m, 0.1)
+    assert np.isclose(p.local_geometry.shat.m, 1.7)

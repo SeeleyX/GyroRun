@@ -46,7 +46,10 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans", gk_code=Non
     (pyrokinetics, gs2, cgyro, gene, tglf, gftm, ...), whatever code is being
     run: pyro converts them to the code it writes. Without it the values are
     plain floats and PyroScan attaches the base input's own units, with a
-    warning. A parameter item may carry its own 'units:', overriding the scan's;
+    warning. 'value_fmt: ".3f"' sets the precision of the values in run directory
+    names. pyro widens it on reload if the values, in the reloading unit, collide
+    when rounded, which then no longer finds the directories that were written:
+    pick one wide enough that neither happens. A parameter item may carry its own 'units:', overriding the scan's;
     'units: null' leaves that parameter's values plain, i.e. in the base input's
     own convention.
 
@@ -94,7 +97,8 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans", gk_code=Non
         if convention is not None or any("units" in i for i in items):
             values = attach_units(pyro, values, items, convention)
         cls = PyroHypercube if kind == "cube" else PyroScan
-        scan = cls(pyro, values, base_directory=output_dir_base)
+        fmt = {"value_fmt": i["value_fmt"] for i in items if "value_fmt" in i}
+        scan = cls(pyro, values, base_directory=output_dir_base, **fmt)
 
     for item in items:
         if "parameter" in item and "attr" in item:

@@ -200,3 +200,9 @@ def test_parameter_units_override_the_scans(tmp_path):
     p = Pyro(gk_file=Path(d) / "input.in")
     assert np.isclose(p.numerics.ky.to(p.norms.tglf).m, 0.1)
     assert np.isclose(p.local_geometry.shat.m, 1.7)
+
+
+def test_value_fmt_sets_run_directory_names(tmp_path):
+    scan = {"scan": [{"parameter": "ky", "values": [0.1, 0.3]}, {"units": "tglf"}, {"value_fmt": ".3f"}]}
+    dirs = create_scan(BASE, scan, output_dir_base=str(tmp_path / "s"))
+    assert all(re.fullmatch(r"ky_0\.\d{3}", Path(d).name) for d in dirs)

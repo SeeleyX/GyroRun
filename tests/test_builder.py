@@ -258,7 +258,7 @@ def test_samples_from_table_with_links_qn_and_beta_prime(tmp_path):
 
     assert len(dirs) == 3
     for d, ky, aln, nu in zip(dirs, [0.2, 0.3, 0.4], [2.0, 3.0, 4.0], [0.02, 0.03, 0.04]):
-        p = Pyro(gk_file=next(Path(d).glob("*gs2*")))
+        p = Pyro(gk_file=Path(d) / "input.in")  # pyro's default GS2 file name
         sp = p.local_species
         assert np.isclose(p.numerics.ky.m, ky)
         assert np.isclose(sp["electron"].inverse_ln.m, aln) and np.isclose(sp["ion1"].inverse_ln.m, aln)

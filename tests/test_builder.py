@@ -236,3 +236,33 @@ def test_code_flags_per_sample_refuses_a_mismatched_table(tmp_path):
     ]}
     with pytest.raises(ValueError, match="without flags"):
         create_scan(None, cube, output_dir_base=str(tmp_path / "out"))
+
+
+def test_samples_from_table_with_links_qn_and_beta_prime(tmp_path):
+    table = tmp_path / "params.in"
+    table.write_text("ky 0.1 0.2 0.3 0.4\nbeta 0.01 0.02 0.03 0.04\naln 1.0 2.0 3.0 4.0\nnu 0.01 0.02 0.03 0.04\n")
+    base = Pyro(gk_file=template_dir / "input.gs2")
+    ratio = (base.local_species["ion1"].nu / base.local_species["electron"].nu).m
+    cube = {
+        "cube": [
+            {"samples_from": {"file": str(table), "start": 1, "stop": 4}},
+            {"parameter": "ky"},
+            {"parameter": "beta", "attr": "numerics", "location": ["beta"]},  # before the gradients on purpose
+            {"parameter": "electron_dens_gradient", "column": "aln", "link": {"species": ["ion1"]}},
+            {"parameter": "electron_nu", "column": "nu", "attr": "local_species", "location": ["electron", "nu"],
+             "link": {"species": ["ion1"], "mode": "scale"}},
+            {"flags": ["enforce_consistent_beta_prime", {"enforce_quasineutrality": "electron"}]},
+        ]
+    }
+    dirs = create_scan(str(template_dir / "input.gs2"), cube, output_dir_base=str(tmp_path / "c"))
+
+    assert len(dirs) == 3
+    for d, ky, aln, nu in zip(dirs, [0.2, 0.3, 0.4], [2.0, 3.0, 4.0], [0.02, 0.03, 0.04]):
+        p = Pyro(gk_file=next(Path(d).glob("*gs2*")))
+        sp = p.local_species
+        assert np.isclose(p.numerics.ky.m, ky)
+        assert np.isclose(sp["electron"].inverse_ln.m, aln) and np.isclose(sp["ion1"].inverse_ln.m, aln)
+        assert np.isclose(sp["electron"].nu.m, nu) and np.isclose((sp["ion1"].nu / sp["electron"].nu).m, ratio)
+        written = p.local_geometry.beta_prime.m
+        p.enforce_consistent_beta_prime()  # with this run's final gradients
+        assert np.isclose(written, p.local_geometry.beta_prime.m)

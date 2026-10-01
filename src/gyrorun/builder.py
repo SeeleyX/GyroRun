@@ -4,7 +4,7 @@ import re
 import sys
 import numpy as np
 from pyrokinetics import Pyro, PyroScan, PyroHypercube
-from pyrokinetics.pyroscan import get_from_dict
+from pyrokinetics.pyroscan import get_from_dict, set_in_dict
 from scipy.stats import qmc
 from .slurm import generate_sbatch_script, submit_job
 
@@ -74,10 +74,29 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans", gk_code=Non
     code_flags_per_sample names a JSON file mapping each run name to its own
     flags, applied after code_flags (so they win). It must list exactly the
     scan's runs: a missing or extra name is an error, never a silent default.
+
+    A cube may also take its samples from a table instead of drawing them, to
+    continue an existing design: one line per parameter, 'name v1 v2 ...'.
+    A parameter item's 'column' names its row when that differs from its name:
+
+        cube:
+          - samples_from: {file: $GYRO_DATA_OUTPUT/.../params.in, start: 300, stop: 1000}
+          - parameter: ion_temp_gradient
+            column: deuterium_temp_gradient
+            attr: local_species
+            location: [ion1, inverse_lt]
+            link: {species: [ion2], mode: equal}
+
+    'link' copies a species parameter to other species: mode 'equal' sets
+    them to the same value (gradients); 'scale' keeps each one's ratio to it
+    from the base input (collision frequencies). Links, then the flags
+    'enforce_quasineutrality: <species>' (pyro's LocalSpecies method),
+    enforce_consistent_beta_prime and enforce_consistent_pvg, run once per
+    run after every parameter is set, so they see that run's final values.
     """
     kind = "cube" if "cube" in scan_config else "scan"
     items = scan_config[kind]
-    values = {item["parameter"]: item["values"] for item in items if "parameter" in item}
+    values = {item["parameter"]: item.get("values") for item in items if "parameter" in item}
     flags = [flag for item in items for flag in item.get("flags", [])]
 
     source = next((i["from_directory"] for i in items if "from_directory" in i), None)
@@ -90,7 +109,14 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans", gk_code=Non
         scan = PyroHypercube.from_directory(**{**source, "root": root})
     else:
         pyro = Pyro(gk_file=base_filepath)
-        if kind == "cube":
+        table = next((i["samples_from"] for i in items if "samples_from" in i), None)
+        if table:
+            with open(os.path.expandvars(os.path.expanduser(table["file"]))) as f:
+                rows = {line.split()[0]: line.split()[1:] for line in f if line.strip()}
+            column = {i["parameter"]: i.get("column", i["parameter"]) for i in items if "parameter" in i}
+            cut = slice(table.get("start", 0), table.get("stop"))
+            values = {name: [float(v) for v in rows[column[name]][cut]] for name in values}
+        elif kind == "cube":
             n_samples = next(item["n_samples"] for item in items if "n_samples" in item)
             seed = next((f["seed"] for f in flags if isinstance(f, dict) and "seed" in f), None)
             lower, upper = zip(*values.values())
@@ -109,15 +135,30 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans", gk_code=Non
         if "parameter" in item and "attr" in item:
             scan.add_parameter_key(item["parameter"], item["attr"], item["location"])
 
-    if "enforce_consistent_pvg" in flags and "gamma_exb" in values:
-        scan.add_parameter_func("gamma_exb", Pyro.enforce_consistent_pvg, {})
-
+    # pyro runs a parameter's func right after setting that parameter, so funcs that
+    # depend on several parameters all go on the last one: they see the run's final values
+    post = []
+    for item in items:
+        if "link" in item:
+            attr, (primary, *key) = scan.parameter_map[item["parameter"]]
+            mode = item["link"].get("mode", "equal")
+            if mode not in ("equal", "scale"):
+                raise ValueError(f"link mode {mode!r}: use 'equal' or 'scale'")
+            base = getattr(scan.base_pyro, attr)
+            for other in item["link"]["species"]:
+                ratio = get_from_dict(base, [other, *key]) / get_from_dict(base, [primary, *key])
+                factor = 1 if mode == "equal" else ratio
+                post.append(lambda p, a=attr, o=other, f=factor, s=primary, k=key: set_in_dict(
+                    getattr(p, a), [o, *k], f * get_from_dict(getattr(p, a), [s, *k])))
+    qn = next((f["enforce_quasineutrality"] for f in flags if isinstance(f, dict) and "enforce_quasineutrality" in f), None)
+    if qn:
+        post.append(lambda p: p.local_species.enforce_quasineutrality(qn))
     if "enforce_consistent_beta_prime" in flags and "beta" in values:
-
-        def enforce_beta_prime(pyro):
-            pyro.enforce_consistent_beta_prime()
-
-        scan.add_parameter_func("beta", enforce_beta_prime, {})
+        post.append(lambda p: p.enforce_consistent_beta_prime())
+    if "enforce_consistent_pvg" in flags and "gamma_exb" in values:
+        post.append(Pyro.enforce_consistent_pvg)
+    if post:
+        scan.add_parameter_func(list(scan.parameter_dict)[-1], lambda p: [f(p) for f in post], {})
 
     if gk_code:
         scan.convert_gk_code(gk_code)

@@ -285,3 +285,23 @@ def test_samples_from_table_with_links_qn_and_beta_prime(tmp_path):
         written = p.local_geometry.beta_prime.m
         p.enforce_consistent_beta_prime()  # with this run's final gradients
         assert np.isclose(written, p.local_geometry.beta_prime.m)
+
+
+def test_code_flags_per_sample_reach_pyroscan_json_and_sample_pyro(tmp_path):
+    from pyrokinetics.pyrohypercube import PyroHypercube
+
+    root = gs2_template_tree(tmp_path)
+    table = tmp_path / "w.json"
+    table.write_text(json.dumps({f"case_{i}": {"WIDTH": 1.0 + i, "NBASIS_MAX": 59} for i in range(3)}))
+    cube = {"cube": [
+        {"from_directory": {"root": str(root), "pattern": "case_*", "params": ["ky"], "gk_code": "GS2"}},
+        {"gk_code": "GFTM"}, {"code_flags_per_sample": str(table)},
+    ]}
+    out = tmp_path / "out"
+    dirs = create_scan(None, cube, output_dir_base=str(out))
+    reloaded = PyroHypercube(pyroscan_json=out / "pyroscan.json", load_base_pyro=True)
+    for d in dirs:
+        i = int(Path(d).name.split("_")[1])
+        data = reloaded.sample_pyro(Path(d).name).gk_input.data
+        assert float(data["width"]) == 1.0 + i == float(re.search(r"^WIDTH\s*=\s*(\S+)", deck_text(d), re.M)[1])
+        assert int(data["nbasis_max"]) == 59

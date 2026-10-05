@@ -39,7 +39,8 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans", gk_code=Non
 
     A scan generates every combination of the values. A cube draws n_samples
     points from a Latin hypercube over the [min, max] range in each
-    parameter's values. attr and location register where the quantity lives in
+    parameter's values ('scale: log' on a parameter draws it uniformly in
+    log(value) instead). attr and location register where the quantity lives in
     the pyro object, and are only needed for parameters pyrokinetics does not
     already define. Flags apply only to the scan that declares them.
 
@@ -119,10 +120,19 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans", gk_code=Non
         elif kind == "cube":
             n_samples = next(item["n_samples"] for item in items if "n_samples" in item)
             seed = next((f["seed"] for f in flags if isinstance(f, dict) and "seed" in f), None)
-            lower, upper = zip(*values.values())
+            # 'scale: log' on a parameter draws it uniformly in log(value): the same number of samples per decade
+            scale = [item.get("scale", "linear") for item in items if "parameter" in item]
+            if set(scale) - {"linear", "log"}:
+                raise ValueError(f"scale {sorted(set(scale) - {'linear', 'log'})}: use 'linear' or 'log'")
+            log = np.array(scale) == "log"
+            bounds = np.array(list(values.values()), float)
+            if (bounds[log] <= 0).any():
+                raise ValueError("scale: log needs a range above zero")
+            bounds[log] = np.log(bounds[log])
             # pyro has no sampler of its own; its how-to draws samples by hand too
             sample = qmc.LatinHypercube(d=len(values), rng=seed).random(n_samples)
-            sample = qmc.scale(sample, lower, upper)
+            sample = qmc.scale(sample, bounds[:, 0], bounds[:, 1])
+            sample[:, log] = np.exp(sample[:, log])
             values = {name: sample[:, i].tolist() for i, name in enumerate(values)}
         convention = next((i["units"] for i in items if "units" in i and "parameter" not in i), None)
         if convention is not None or any("units" in i for i in items):

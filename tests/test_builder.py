@@ -52,6 +52,25 @@ def test_cube_samples_within_range_and_seeded(tmp_path):
         assert np.isclose(ky, b.numerics.ky.m) and np.isclose(shat, b.local_geometry.shat.m)
 
 
+def test_cube_log_scale_is_uniform_per_decade(tmp_path):
+    cube = {
+        "cube": [
+            {"n_samples": 20},
+            {"parameter": "ky", "values": [0.01, 1.0], "scale": "log"},
+            {"parameter": "shat", "attr": "local_geometry", "location": ["shat"], "values": [0.5, 3.0]},
+            {"flags": [{"seed": 0}]},
+        ]
+    }
+    dirs = create_scan(BASE, cube, output_dir_base=str(tmp_path / "a"))
+    ky = np.array([Pyro(gk_file=Path(d) / "input.cgyro").numerics.ky.m for d in dirs])
+
+    # a Latin hypercube in log(ky): exactly one sample per 1/20th of the two decades
+    assert sorted(np.floor((np.log10(ky) + 2) / 2 * 20).astype(int)) == list(range(20))
+    with pytest.raises(ValueError, match="above zero"):
+        create_scan(BASE, {"cube": [{"n_samples": 2}, {"parameter": "ky", "values": [0.0, 1.0], "scale": "log"}]},
+                    output_dir_base=str(tmp_path / "b"))
+
+
 def test_example_pyrocube_builds(tmp_path):
     example = Path(__file__).parents[1] / "examples" / "pyrocube.yaml"
     config = tmp_path / "pyrocube.yaml"

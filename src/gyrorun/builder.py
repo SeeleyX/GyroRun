@@ -186,6 +186,22 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans", gk_code=Non
             )
         for name, pyro in scan.pyro_dict.items():
             pyro.add_flags(table[name])
+        # Record each flag as an ordinary per-sample parameter, so pyroscan.json
+        # keeps what every run used and PyroScan.sample_pyro re-applies it.
+        # The Pyro attribute path is gk_input.data[<flag>]; flags are flat for
+        # GFTM/TGLF, which is all this supports.
+        keys = sorted({k for flags in table.values() for k in flags})
+        if any(set(flags) != set(keys) for flags in table.values()):
+            raise ValueError("code_flags_per_sample: every run must carry the same flags")
+        scan.set_parameter_dict(
+            {**scan.parameter_dict, **{k: [table[n][k] for n in scan.pyro_dict] for k in keys}}
+        )
+        # add_parameter_key reads the base value (for units), so the key must exist
+        # there; the base then carries the first run's value, which every sample overrides
+        scan.base_pyro.add_flags({k: table[next(iter(scan.pyro_dict))][k] for k in keys})
+        stored = {k.lower(): k for k in scan.base_pyro.gk_input.data}  # GFTM stores keys lower case
+        for k in keys:
+            scan.add_parameter_key(k, "gk_input", ["data", stored[k.lower()]])
     scan.write(base_directory=output_dir_base)
 
     return [str(d) for d in scan.run_directories]

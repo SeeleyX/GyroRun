@@ -254,6 +254,7 @@ def execute_scan(
     dry_run=True,
     gk_code=None,
     tearing_parameter=False,
+    store_dir=None,
 ):
     """
     Write the scan, then submit one Slurm array job over its run directories
@@ -263,6 +264,8 @@ def execute_scan(
     nodes, ntasks, max_parallel, qos, setup and save_time_limit are optional.
     tearing_parameter: the save job stores pyro's tearing parameter and A_par
     parity (linear runs only).
+    store_dir: the save job writes pyroscan.nc and its sidecars here, not in the
+    run leaf (None = in the leaf).
     """
     if array_template is None:
         array_template = os.path.join(PROJECT_ROOT, "templates", "slurm_array.sh")
@@ -289,7 +292,9 @@ def execute_scan(
         "last_index": len(run_dirs) - 1,
         "runs_file": runs_file,
         "scan_dir": scan_dir,
-        "save_flags": "--tearing" if tearing_parameter else "",
+        "save_flags": " ".join(
+            (["--tearing"] if tearing_parameter else []) + (["--store", store_dir] if store_dir else [])
+        ),
         # the save job reads output with the interpreter, and so the pinned
         # pyrokinetics, that wrote the inputs
         "python": sys.executable,

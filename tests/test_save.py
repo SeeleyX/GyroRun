@@ -22,3 +22,12 @@ def test_save_tearing_flag(tmp_path):
     # the public CGYRO data has no apar, so only the path is exercised here
     save(scan_dir, tearing=True)
     assert (scan_dir / "pyroscan.nc").exists()
+
+
+def test_save_store_copies_sidecars(tmp_path):
+    scan_dir = shutil.copytree(DATA, tmp_path / "scan")
+    store = tmp_path / "store" / "a" / "b"
+    save(scan_dir, store=store)
+    assert not (scan_dir / "pyroscan.nc").exists()
+    for name in ("pyroscan.nc", "pyroscan.json", "pyroscan_base.input", "pyroscan_norms.json"):
+        assert (store / name).exists() == ((scan_dir / name).exists() or name == "pyroscan.nc")

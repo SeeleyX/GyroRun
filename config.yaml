@@ -3,6 +3,7 @@ paths:
   slurm_template: templates/slurm_array.sh
   save_template: templates/slurm_save.sh
   # output_dir_base: scans                  # override for dry runs/tests only; default $GYRO_DATA_OUTPUT
+  # store_dir: $WORK/Gyrokinetic_Stores   # optional; pyroscan.nc + 3 sidecars go to <store_dir>/<CODE>/Runs/<scan>/<case>/<leaf> instead of the run tree (purged $SCRATCH). Default: in the leaf
   # executable: $GENE_EXE                  # optional; its size and mtime go in manifest.json
 
 slurm:

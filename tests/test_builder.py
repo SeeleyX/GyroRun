@@ -323,5 +323,5 @@ def test_from_directory_exclude_drops_named_runs(tmp_path):
         assert re.search(rf"^NXGRID\s*=\s*{20 + i}\b", deck_text(d), re.M)
     bad = {"cube": [{"from_directory": {"root": str(root), "pattern": "case_*", "params": ["ky"],
                                         "gk_code": "GS2", "exclude": ["case_9"]}}]}
-    with pytest.raises(ValueError, match="no run named"):
+    with pytest.raises(ValueError, match="match no run"):
         create_scan(None, bad, output_dir_base=str(tmp_path / "out2"))

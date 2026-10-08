@@ -71,6 +71,10 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans", gk_code=Non
           - code_flags: {WIDTH: 0.6, FILTER: 0.5}
           - code_flags_per_sample: widths.json      # {"case_0": {"WIDTH": 0.7}, ...}
 
+    from_directory may also take 'exclude: [run names]' to leave those runs out of
+    the cube (e.g. cases a per-case settings rule cannot build). Every name must
+    match a run: pyro raises on a stale list.
+
     one sample per matching run directory, keeping that run's own values.
     code_flags_per_sample names a JSON file mapping each run name to its own
     flags, applied after code_flags (so they win). It must list exactly the

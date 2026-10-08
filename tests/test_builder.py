@@ -305,3 +305,23 @@ def test_code_flags_per_sample_reach_pyroscan_json_and_sample_pyro(tmp_path):
         data = reloaded.sample_pyro(Path(d).name).gk_input.data
         assert float(data["width"]) == 1.0 + i == float(re.search(r"^WIDTH\s*=\s*(\S+)", deck_text(d), re.M)[1])
         assert int(data["nbasis_max"]) == 59
+
+
+def test_from_directory_exclude_drops_named_runs(tmp_path):
+    root = gs2_template_tree(tmp_path)
+    table = tmp_path / "w.json"
+    table.write_text(json.dumps({f"case_{i}": {"NXGRID": 20 + i} for i in (0, 2)}))
+    cube = {"cube": [
+        {"from_directory": {"root": str(root), "pattern": "case_*", "params": ["ky"], "gk_code": "GS2",
+                            "exclude": ["case_1"]}},
+        {"gk_code": "GFTM"}, {"code_flags_per_sample": str(table)},
+    ]}
+    dirs = create_scan(None, cube, output_dir_base=str(tmp_path / "out"))
+    assert sorted(Path(d).name for d in dirs) == ["case_0", "case_2"]
+    for d in dirs:
+        i = int(Path(d).name.split("_")[1])
+        assert re.search(rf"^NXGRID\s*=\s*{20 + i}\b", deck_text(d), re.M)
+    bad = {"cube": [{"from_directory": {"root": str(root), "pattern": "case_*", "params": ["ky"],
+                                        "gk_code": "GS2", "exclude": ["case_9"]}}]}
+    with pytest.raises(ValueError, match="match no run"):
+        create_scan(None, bad, output_dir_base=str(tmp_path / "out2"))

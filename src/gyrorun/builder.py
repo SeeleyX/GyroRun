@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import re
@@ -71,6 +72,10 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans", gk_code=Non
           - code_flags: {WIDTH: 0.6, FILTER: 0.5}
           - code_flags_per_sample: widths.json      # {"case_0": {"WIDTH": 0.7}, ...}
 
+    from_directory may also take 'exclude: [run names]' to leave those runs out of
+    the cube (e.g. cases a per-case settings rule cannot build). Every name must
+    match a run: a stale list is an error, never silently ignored.
+
     one sample per matching run directory, keeping that run's own values.
     code_flags_per_sample names a JSON file mapping each run name to its own
     flags, applied after code_flags (so they win). It must list exactly the
@@ -106,8 +111,22 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans", gk_code=Non
 
     if source:
         root = os.path.expandvars(os.path.expanduser(source["root"]))
+        exclude = set(source.get("exclude", []))
+        source = {k: v for k, v in source.items() if k != "exclude"}
         # from_directory sets base_directory to the source; write() redirects it
         scan = PyroHypercube.from_directory(**{**source, "root": root})
+        if exclude:
+            # pyro's from_directory takes a glob only, so drop the excluded runs here
+            if exclude - set(scan.sample_names):
+                raise ValueError(f"from_directory exclude: no run named {sorted(exclude - set(scan.sample_names))[:5]}")
+            keep = [i for i, n in enumerate(scan.sample_names) if n not in exclude]
+            names = [scan.sample_names[i] for i in keep]
+            pyros = [scan.pyro_dict[n] for n in names]
+            kept = PyroHypercube(pyro=copy.deepcopy(pyros[0]), parameter_dict={}, sample_names=names,
+                                 run_pyros=pyros, base_directory=root, file_name=scan.file_name)
+            kept.parameter_map.update(scan.parameter_map)
+            kept.set_parameter_dict({k: v[keep] for k, v in scan.parameter_dict.items()})
+            scan = kept
     else:
         pyro = Pyro(gk_file=base_filepath)
         table = next((i["samples_from"] for i in items if "samples_from" in i), None)

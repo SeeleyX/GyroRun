@@ -305,3 +305,16 @@ def test_code_flags_per_sample_reach_pyroscan_json_and_sample_pyro(tmp_path):
         data = reloaded.sample_pyro(Path(d).name).gk_input.data
         assert float(data["width"]) == 1.0 + i == float(re.search(r"^WIDTH\s*=\s*(\S+)", deck_text(d), re.M)[1])
         assert int(data["nbasis_max"]) == 59
+
+
+def test_runs_per_task_covers_every_run_once(tmp_path):
+    import subprocess
+    scan = {"scan": [{"parameter": "ky", "values": [0.1, 0.2, 0.3, 0.4, 0.5]}]}
+    log = tmp_path / "ran.txt"
+    slurm = {**SLURM, "runs_per_task": 2, "run_command": f"pwd >> {log}"}
+    jobs = execute_scan(BASE, scan, slurm, output_dir_base=str(tmp_path / "s"), dry_run=True)
+    array = tmp_path / "s" / "slurm_array.sh"
+    assert "--array=0-2%" in array.read_text()
+    for task in range(3):
+        subprocess.run(["bash", str(array)], env={**os.environ, "SLURM_ARRAY_TASK_ID": str(task)}, check=True)
+    assert log.read_text().splitlines() == [os.path.abspath(d) for d in jobs["run_dirs"]]

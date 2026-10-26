@@ -10,8 +10,15 @@
 #SBATCH --account=$account
 $qos_line
 
-# task i runs in the directory on line i+1 of runs.txt
-cd "$(sed -n "$((SLURM_ARRAY_TASK_ID+1))p" $runs_file)" || exit 1
+# task i runs the directories on lines i*k+1 .. (i+1)*k of runs.txt, k = runs_per_task
+k=$runs_per_task
+runs=$(sed -n "$((SLURM_ARRAY_TASK_ID*k+1)),$(((SLURM_ARRAY_TASK_ID+1)*k))p" $runs_file)
+cd "$(head -n1 <<< "$runs")" || exit 1
 
 $setup
-$run_command
+status=0
+for run_dir in $runs; do
+    cd "$run_dir" || exit 1
+    $run_command || status=1
+done
+exit $status

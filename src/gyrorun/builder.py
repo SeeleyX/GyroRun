@@ -260,7 +260,8 @@ def execute_scan(
     and a save job that runs after it to write pyroscan.nc. Does not wait.
 
     slurm_config is config.yaml's 'slurm' mapping. run_command is required;
-    nodes, ntasks, max_parallel, qos, setup and save_time_limit are optional.
+    nodes, ntasks, max_parallel, qos, setup, save_time_limit and runs_per_task
+    (runs done one after another by each array task, default 1) are optional.
     tearing_parameter: the save job stores pyro's tearing parameter and A_par
     parity (linear runs only).
     """
@@ -283,10 +284,11 @@ def execute_scan(
         "ntasks": 1,
         "max_parallel": 50,
         "save_time_limit": "00:30:00",
+        "runs_per_task": 1,
         **slurm_config,
         "qos_line": f"#SBATCH --qos={slurm_config['qos']}" if slurm_config.get("qos") else "",
         "setup": "\n".join(slurm_config.get("setup", [])),
-        "last_index": len(run_dirs) - 1,
+        "last_index": -(-len(run_dirs) // slurm_config.get("runs_per_task", 1)) - 1,
         "runs_file": runs_file,
         "scan_dir": scan_dir,
         "save_flags": "--tearing" if tearing_parameter else "",

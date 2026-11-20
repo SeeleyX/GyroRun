@@ -65,3 +65,22 @@ scans: [{{name: a, scan: [{{parameter: ky, values: [0.1]}}]}}]
     with pytest.raises(SystemExit, match="output_dir_base"):
         main([str(cfg)])
     assert not (tmp_path / "real").exists()
+
+
+def test_store_dir_mirrors_leaf_in_save_job(tmp_path):
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text(f"""paths:
+  base_input: {template_dir / 'input.tglf'}
+  output_dir_base: out
+  store_dir: {tmp_path}/store
+slurm: {{partition: p, account: a, time_limit: "00:10:00", run_command: 'echo hi'}}
+run: {{dry_run: true, scan_name: proj, case: M1}}
+scans:
+  - name: a
+    scan:
+      - parameter: ky
+        values: [0.1, 0.2]
+""")
+    main([str(cfg)])
+    save_sh = (tmp_path / "out/TGLF/Runs/proj/M1/a/slurm_save.sh").read_text()
+    assert f"--store {tmp_path}/store/TGLF/Runs/proj/M1/a" in save_sh

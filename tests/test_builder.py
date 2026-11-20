@@ -287,6 +287,47 @@ def test_samples_from_table_with_links_qn_and_beta_prime(tmp_path):
         assert np.isclose(written, p.local_geometry.beta_prime.m)
 
 
+def test_cube_crossed_with_ky_and_consistency_survives_reload(tmp_path):
+    from pyrokinetics.pyrohypercube import PyroHypercube
+
+    kys = [0.1, 0.5]
+    cube = {
+        "cube": [
+            {"n_samples": 3},
+            {"parameter": "beta", "attr": "numerics", "location": ["beta"], "values": [0.0, 0.1]},
+            {"parameter": "electron_dens_gradient", "values": [0.0, 4.0], "link": {"species": ["ion1"]}},
+            {"parameter": "electron_temp_gradient", "values": [0.0, 6.0]},
+            {"cross": {"parameter": "ky", "values": kys}},
+            {"flags": [{"seed": 3}, "enforce_consistent_beta_prime", {"enforce_quasineutrality": "electron"}]},
+        ]
+    }
+    out = tmp_path / "x"
+    dirs = create_scan(str(template_dir / "input.gs2"), cube, output_dir_base=str(out))
+    assert [str(Path(d).relative_to(out)) for d in dirs] == [
+        f"sample_{i:04d}/ky_{k:g}" for i in range(3) for k in kys
+    ]
+
+    loaded = PyroHypercube(pyroscan_json=out / "pyroscan.json", load_base_pyro=True)
+    assert loaded.n_samples == 6
+    ky = loaded.parameter_dict["ky"].m.reshape(3, 2)  # stored in pyro units, not the deck's
+    assert np.allclose(ky, ky[0]) and np.isclose(ky[0, 1] / ky[0, 0], kys[1] / kys[0])
+    for name in ("beta", "electron_dens_gradient", "electron_temp_gradient"):
+        v = np.asarray(getattr(loaded.parameter_dict[name], "m", loaded.parameter_dict[name])).reshape(3, 2)
+        assert np.all(v[:, 0] == v[:, 1])  # each point's runs differ only in ky
+    beta_primes = set()
+    for i, d in enumerate(dirs):
+        deck = Pyro(gk_file=Path(d) / "input.in")
+        got = loaded.sample_pyro(i)
+        assert np.isclose(got.numerics.ky.m, deck.numerics.ky.to(deck.norms.pyrokinetics, deck.norms.context).m)
+        assert np.isclose(deck.numerics.ky.m, kys[i % 2])  # the deck's own (GS2) units, as given
+        for sp in ("electron", "ion1"):
+            assert np.isclose(got.local_species[sp].inverse_ln.m, deck.local_species[sp].inverse_ln.m)
+        assert np.isclose(deck.local_species["ion1"].inverse_ln.m, deck.local_species["electron"].inverse_ln.m)
+        assert np.isclose(got.local_geometry.beta_prime.m, deck.local_geometry.beta_prime.m)
+        beta_primes.add(round(float(deck.local_geometry.beta_prime.m), 8))
+    assert len(beta_primes) == 3  # one per drawn point, set from its beta and gradients
+
+
 def test_code_flags_per_sample_reach_pyroscan_json_and_sample_pyro(tmp_path):
     from pyrokinetics.pyrohypercube import PyroHypercube
 

@@ -4,7 +4,7 @@ import re
 import sys
 import numpy as np
 from pyrokinetics import Pyro, PyroScan, PyroHypercube
-from pyrokinetics.pyroscan import get_from_dict, set_in_dict
+from pyrokinetics.pyroscan import get_from_dict
 from scipy.stats import qmc
 from .slurm import generate_sbatch_script, submit_job
 
@@ -96,8 +96,21 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans", gk_code=Non
     them to the same value (gradients); 'scale' keeps each one's ratio to it
     from the base input (collision frequencies). Links, then the flags
     'enforce_quasineutrality: <species>' (pyro's LocalSpecies method),
-    enforce_consistent_beta_prime and enforce_consistent_pvg, run once per
-    run after every parameter is set, so they see that run's final values.
+    enforce_consistent_beta_prime and enforce_consistent_pvg, become pyro
+    consistency steps (PyroScan.add_consistency_step): they run once per run
+    after every parameter is set, so they see that run's final values, and are
+    saved to pyroscan.json, so sample_pyro on the reloaded scan re-applies them.
+
+    A cube may cross its drawn (or tabled) points with a linear list of one
+    more parameter, the same list for every point:
+
+        cube:
+          - n_samples: 250
+          - parameter: q ...
+          - cross: {parameter: ky, values: [0.05, 0.1, 0.2]}
+
+    gives n_samples x 3 runs in one PyroHypercube, with ky a per-sample
+    parameter; point i's runs are sample_<i>/ky_<value>, identical but for ky.
     """
     kind = "cube" if "cube" in scan_config else "scan"
     items = scan_config[kind]
@@ -109,6 +122,8 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans", gk_code=Non
     code_flags = {k: v for i in items for k, v in i.get("code_flags", {}).items()}
 
     if source:
+        if any("cross" in i for i in items):
+            raise ValueError("cross: needs drawn or tabled samples, not from_directory")
         root = os.path.expandvars(os.path.expanduser(source["root"]))
         # from_directory sets base_directory to the source; write() redirects it
         scan = PyroHypercube.from_directory(**{**source, "root": root})
@@ -138,41 +153,49 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans", gk_code=Non
             sample = qmc.scale(sample, bounds[:, 0], bounds[:, 1])
             sample[:, log] = np.exp(sample[:, log])
             values = {name: sample[:, i].tolist() for i, name in enumerate(values)}
+        names = {}
+        cross = next((i["cross"] for i in items if "cross" in i), None)
+        if cross:
+            if kind != "cube":
+                raise ValueError("cross: is a cube item; in a scan, list the parameter's values instead")
+            # every drawn point at every value of the crossed parameter: still one cube,
+            # with the crossed parameter per sample and each point's runs side by side
+            n_points, crossed = len(next(iter(values.values()))), cross["values"]
+            values = {name: np.repeat(v, len(crossed)).tolist() for name, v in values.items()}
+            values[cross["parameter"]] = np.tile(crossed, n_points).tolist()
+            width = max(4, len(str(n_points - 1)))
+            names["sample_names"] = [
+                f"sample_{i:0{width}d}/{cross['parameter']}_{v:g}" for i in range(n_points) for v in crossed
+            ]
         convention = next((i["units"] for i in items if "units" in i and "parameter" not in i), None)
         if convention is not None or any("units" in i for i in items):
             values = attach_units(pyro, values, items, convention)
         cls = PyroHypercube if kind == "cube" else PyroScan
         fmt = {"value_fmt": i["value_fmt"] for i in items if "value_fmt" in i}
-        scan = cls(pyro, values, base_directory=output_dir_base, **fmt)
+        scan = cls(pyro, values, base_directory=output_dir_base, **fmt, **names)
 
     for item in items:
         if "parameter" in item and "attr" in item:
             scan.add_parameter_key(item["parameter"], item["attr"], item["location"])
 
-    # pyro runs a parameter's func right after setting that parameter, so funcs that
-    # depend on several parameters all go on the last one: they see the run's final values
-    post = []
+    # pyro's consistency steps run after every parameter is set and are saved to
+    # pyroscan.json, so sample_pyro on the reloaded scan is the deck that ran
     for item in items:
         if "link" in item:
             attr, (primary, *key) = scan.parameter_map[item["parameter"]]
-            mode = item["link"].get("mode", "equal")
-            if mode not in ("equal", "scale"):
-                raise ValueError(f"link mode {mode!r}: use 'equal' or 'scale'")
-            base = getattr(scan.base_pyro, attr)
             for other in item["link"]["species"]:
-                ratio = get_from_dict(base, [other, *key]) / get_from_dict(base, [primary, *key])
-                factor = 1 if mode == "equal" else ratio
-                post.append(lambda p, a=attr, o=other, f=factor, s=primary, k=key: set_in_dict(
-                    getattr(p, a), [o, *k], f * get_from_dict(getattr(p, a), [s, *k])))
+                scan.add_consistency_step(
+                    "link", attr=attr, source=[primary, *key], target=[other, *key],
+                    mode=item["link"].get("mode", "equal"),
+                )
     qn = next((f["enforce_quasineutrality"] for f in flags if isinstance(f, dict) and "enforce_quasineutrality" in f), None)
     if qn:
-        post.append(lambda p: p.local_species.enforce_quasineutrality(qn))
-    if "enforce_consistent_beta_prime" in flags and "beta" in values:
-        post.append(lambda p: p.enforce_consistent_beta_prime())
+        scan.add_consistency_step("enforce_quasineutrality", species=qn)
+    # beta' depends on the gradients as well as beta, so it is enforced whatever is scanned
+    if "enforce_consistent_beta_prime" in flags:
+        scan.add_consistency_step("enforce_consistent_beta_prime")
     if "enforce_consistent_pvg" in flags and "gamma_exb" in values:
-        post.append(Pyro.enforce_consistent_pvg)
-    if post:
-        scan.add_parameter_func(list(scan.parameter_dict)[-1], lambda p: [f(p) for f in post], {})
+        scan.add_consistency_step("enforce_consistent_pvg")
 
     if gk_code:
         scan.convert_gk_code(gk_code)

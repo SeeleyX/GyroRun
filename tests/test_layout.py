@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import pytest
 from pyrokinetics import template_dir
 from gyrorun.layout import compose_leaf
@@ -65,3 +66,27 @@ scans: [{{name: a, scan: [{{parameter: ky, values: [0.1]}}]}}]
     with pytest.raises(SystemExit, match="output_dir_base"):
         main([str(cfg)])
     assert not (tmp_path / "real").exists()
+
+
+def test_dry_run_omitted_defaults_to_false(tmp_path, monkeypatch):
+    # run.dry_run left out means a real submission: execute_scan gets dry_run=False
+    seen = {}
+
+    def fake_execute_scan(**kwargs):
+        seen["dry_run"] = kwargs["dry_run"]
+        Path(kwargs["output_dir_base"]).mkdir(parents=True, exist_ok=True)
+        return {"array": "1", "save": "2", "run_dirs": []}
+
+    monkeypatch.setattr("gyrorun.run_scan.execute_scan", fake_execute_scan)
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text(f"""paths:
+  base_input: {template_dir / 'input.tglf'}
+  output_dir_base: out
+slurm: {{partition: p, account: a, time_limit: "00:10:00", run_command: x}}
+run: {{scan_name: proj, case: M1}}
+scans: [{{name: a, scan: [{{parameter: ky, values: [0.1]}}]}}]
+""")
+    main([str(cfg)])
+    assert seen["dry_run"] is False
+    manifest = json.loads((tmp_path / "out/TGLF/Runs/proj/M1/a/manifest.json").read_text())
+    assert manifest["dry_run"] is False

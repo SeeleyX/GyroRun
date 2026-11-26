@@ -165,7 +165,8 @@ omitted; Pitagora's `dcgp_fua_prod` uses `normal`), `setup` (shell lines run in
 the run directory before `run_command`) and `save_time_limit` ("00:30:00").
 Those values fill the `string.Template` `$name` placeholders in `templates/slurm_array.sh`
 and `templates/slurm_save.sh`. `run.dry_run: true` writes inputs and scripts
-and returns synthetic job IDs instead of submitting.
+and returns synthetic job IDs instead of submitting; omitted, it defaults to `false` and the
+scan is submitted.
 
 ### Running on Pitagora
 

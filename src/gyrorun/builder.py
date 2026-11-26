@@ -107,10 +107,13 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans", gk_code=Non
         cube:
           - n_samples: 250
           - parameter: q ...
-          - cross: {parameter: ky, values: [0.05, 0.1, 0.2]}
+          - cross:
+              - {parameter: ky, values: [0.05, 0.1, 0.2]}
 
-    gives n_samples x 3 runs in one PyroHypercube, with ky a per-sample
-    parameter; point i's runs are sample_<i>/ky_<value>, identical but for ky.
+    gives n_samples x 3 runs in one PyroHypercube with dims (sample, ky): each
+    crossed parameter is a grid axis, in the scan's units:. Point i's runs are
+    sample_<i>/ky_<value as typed>, identical but for ky. Several crosses give
+    several grid axes.
     """
     kind = "cube" if "cube" in scan_config else "scan"
     items = scan_config[kind]
@@ -153,26 +156,23 @@ def create_scan(base_filepath, scan_config, output_dir_base="scans", gk_code=Non
             sample = qmc.scale(sample, bounds[:, 0], bounds[:, 1])
             sample[:, log] = np.exp(sample[:, log])
             values = {name: sample[:, i].tolist() for i, name in enumerate(values)}
-        names = {}
-        cross = next((i["cross"] for i in items if "cross" in i), None)
-        if cross:
-            if kind != "cube":
-                raise ValueError("cross: is a cube item; in a scan, list the parameter's values instead")
-            # every drawn point at every value of the crossed parameter: still one cube,
-            # with the crossed parameter per sample and each point's runs side by side
-            n_points, crossed = len(next(iter(values.values()))), cross["values"]
-            values = {name: np.repeat(v, len(crossed)).tolist() for name, v in values.items()}
-            values[cross["parameter"]] = np.tile(crossed, n_points).tolist()
-            width = max(4, len(str(n_points - 1)))
-            names["sample_names"] = [
-                f"sample_{i:0{width}d}/{cross['parameter']}_{v:g}" for i in range(n_points) for v in crossed
-            ]
+        crosses = [c for i in items if "cross" in i for c in i["cross"]]
+        if crosses and kind != "cube":
+            raise ValueError("cross: is a cube item; in a scan, list the parameter's values instead")
+        # each crossed parameter is a grid axis of its own: every point runs at every value
+        grid = [c["parameter"] for c in crosses]
+        values.update({c["parameter"]: c["values"] for c in crosses})
         convention = next((i["units"] for i in items if "units" in i and "parameter" not in i), None)
         if convention is not None or any("units" in i for i in items):
             values = attach_units(pyro, values, items, convention)
         cls = PyroHypercube if kind == "cube" else PyroScan
-        fmt = {"value_fmt": i["value_fmt"] for i in items if "value_fmt" in i}
-        scan = cls(pyro, values, base_directory=output_dir_base, **fmt, **names)
+        # run directories carry the crossed values as typed: sample_0000/ky_0.1
+        fmt = {"value_fmt": i["value_fmt"] for i in items if "value_fmt" in i} or ({"value_fmt": "g"} if grid else {})
+        if grid:
+            cube_values = {k: v for k, v in values.items() if k not in grid}
+            scan = cls(pyro, cube_values, grid={k: values[k] for k in grid}, base_directory=output_dir_base, **fmt)
+        else:
+            scan = cls(pyro, values, base_directory=output_dir_base, **fmt)
 
     for item in items:
         if "parameter" in item and "attr" in item:

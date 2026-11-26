@@ -297,7 +297,7 @@ def test_cube_crossed_with_ky_and_consistency_survives_reload(tmp_path):
             {"parameter": "beta", "attr": "numerics", "location": ["beta"], "values": [0.0, 0.1]},
             {"parameter": "electron_dens_gradient", "values": [0.0, 4.0], "link": {"species": ["ion1"]}},
             {"parameter": "electron_temp_gradient", "values": [0.0, 6.0]},
-            {"cross": {"parameter": "ky", "values": kys}},
+            {"cross": [{"parameter": "ky", "values": kys}]},
             {"flags": [{"seed": 3}, "enforce_consistent_beta_prime", {"enforce_quasineutrality": "electron"}]},
         ]
     }
@@ -308,16 +308,14 @@ def test_cube_crossed_with_ky_and_consistency_survives_reload(tmp_path):
     ]
 
     loaded = PyroHypercube(pyroscan_json=out / "pyroscan.json", load_base_pyro=True)
-    assert loaded.n_samples == 6
-    ky = loaded.parameter_dict["ky"].m.reshape(3, 2)  # stored in pyro units, not the deck's
-    assert np.allclose(ky, ky[0]) and np.isclose(ky[0, 1] / ky[0, 0], kys[1] / kys[0])
-    for name in ("beta", "electron_dens_gradient", "electron_temp_gradient"):
-        v = np.asarray(getattr(loaded.parameter_dict[name], "m", loaded.parameter_dict[name])).reshape(3, 2)
-        assert np.all(v[:, 0] == v[:, 1])  # each point's runs differ only in ky
+    assert loaded.n_samples == 3 and len(loaded.pyro_dict) == 6
+    assert [axis for axis, _ in loaded.axes()] == ["sample", "ky"]
+    ky = loaded.parameter_dict["ky"].m  # one value per grid point, stored in pyro units
+    assert len(ky) == 2 and np.isclose(ky[1] / ky[0], kys[1] / kys[0])
     beta_primes = set()
     for i, d in enumerate(dirs):
         deck = Pyro(gk_file=Path(d) / "input.in")
-        got = loaded.sample_pyro(i)
+        got = loaded.sample_pyro(i // 2, ky=i % 2)
         assert np.isclose(got.numerics.ky.m, deck.numerics.ky.to(deck.norms.pyrokinetics, deck.norms.context).m)
         assert np.isclose(deck.numerics.ky.m, kys[i % 2])  # the deck's own (GS2) units, as given
         for sp in ("electron", "ion1"):

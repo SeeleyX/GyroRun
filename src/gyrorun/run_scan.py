@@ -20,8 +20,9 @@ def main(argv=None):
         for k, v in config["paths"].items()
     }
     run = config["run"]
+    dry_run = run.get("dry_run", False)  # omitted = submit for real
     override = paths.get("output_dir_base")
-    if run["dry_run"] and not override:
+    if dry_run and not override:
         raise SystemExit(
             "run.dry_run: true needs paths.output_dir_base, or it writes into the real "
             "$GYRO_DATA_OUTPUT tree; use e.g. $SCRATCH/gyrorun_dryrun"
@@ -54,11 +55,11 @@ def main(argv=None):
             output_dir_base=str(leaf),
             array_template=paths.get("slurm_template"),
             save_template=paths.get("save_template"),
-            dry_run=run["dry_run"],
+            dry_run=dry_run,
             gk_code=run.get("gk_code"),
             tearing_parameter=run.get("tearing_parameter", False),
         )
-        write_manifest(leaf, config, scan_cfg, {**jobs, "dry_run": run["dry_run"]},
+        write_manifest(leaf, config, scan_cfg, {**jobs, "dry_run": dry_run},
                        paths.get("executable"))
         print(f"{leaf}: {len(jobs['run_dirs'])} runs, array job {jobs['array']}, save job {jobs['save']}")
     print("\nleaves for docs/gyro_data_runs.md:")

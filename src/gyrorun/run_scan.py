@@ -2,6 +2,7 @@
 import os
 import sys
 import yaml
+from pathlib import Path
 from pyrokinetics import Pyro
 from .builder import execute_scan
 from .layout import compose_leaf, kind, write_manifest
@@ -46,6 +47,9 @@ def main(argv=None):
     if len(set(leaves)) < len(leaves):
         raise SystemExit("two scans share a leaf name")
 
+    # paths.store_dir: root for pyroscan.nc, mirroring the leaf's path under the output root
+    store_root = paths.get("store_dir")
+    out_root = Path(override or os.environ["GYRO_DATA_OUTPUT"])
     for scan_cfg, leaf in zip(config["scans"], leaves):
         jobs = execute_scan(
             base_filepath=paths.get("base_input"),
@@ -57,6 +61,7 @@ def main(argv=None):
             dry_run=run["dry_run"],
             gk_code=run.get("gk_code"),
             tearing_parameter=run.get("tearing_parameter", False),
+            store_dir=str(Path(store_root, leaf.relative_to(out_root))) if store_root else None,
         )
         write_manifest(leaf, config, scan_cfg, {**jobs, "dry_run": run["dry_run"]},
                        paths.get("executable"))

@@ -40,7 +40,7 @@ gyrorun.builder.execute_scan
     ├─► runs.txt (one run directory per line)
     ├─► slurm_array.sh ── sbatch ──► array job, task i runs in line i+1
     └─► slurm_save.sh  ── sbatch --dependency=afterany:<array> ──►
-                            python -m gyrorun.save <scan_dir> ──► pyroscan.nc
+                            python -m gyrorun.save <scan_dir> [--store <dir>] ──► pyroscan.nc (in <scan_dir>, or in <dir> with its 3 sidecars)
 ```
 
 GyroRun is code-agnostic: pyrokinetics writes every input and reads every
